@@ -26,7 +26,6 @@ public class FileUploadController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
-        // Guarda el archivo en /tmp o /uploads/pending
         Path path = Paths.get("/Users/jesus/Downloads/uploads/pending", file.getOriginalFilename());
         Files.createDirectories(path.getParent());
         Files.write(path, file.getBytes());
