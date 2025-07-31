@@ -24,17 +24,17 @@ public class FileProcessingListener {
         String filePath = payload.get("path");
 
         if (filePath == null) {
-            System.err.println("❌ Payload inválido, sin 'path'.");
+            log.error("❌ Invalid payload, missing 'path'.");
             return;
         }
 
         File file = new File(filePath);
         if (!file.exists()) {
-            System.err.println("❌ Archivo no encontrado: " + filePath);
+            log.error("❌ File not found: {}", filePath);
             return;
         }
 
-        System.out.println("📥 Mensaje recibido desde RabbitMQ. Procesando: " + filePath);
+        log.info("📥 Message recived from RabbitMQ: {}", filePath);
         fileProcessingService.processFile(file);
     }
 

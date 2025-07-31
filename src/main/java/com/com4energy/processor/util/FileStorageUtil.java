@@ -1,10 +1,12 @@
 package com.com4energy.processor.util;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.*;
 
+@Slf4j
 public final class FileStorageUtil {
 
     private FileStorageUtil() {
@@ -23,6 +25,7 @@ public final class FileStorageUtil {
         Path path = Paths.get(pathToStorage, file.getOriginalFilename());
         Files.createDirectories(path.getParent());
         Files.write(path, file.getBytes());
+        log.info("File {}, stored at: {}", file.getOriginalFilename(), path.toAbsolutePath());
         return path;
     }
 
