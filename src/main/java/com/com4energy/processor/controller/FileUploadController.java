@@ -1,6 +1,13 @@
 package com.com4energy.processor.controller;
 
-import com.com4energy.processor.service.FileProcessingService;
+import com.com4energy.processor.api.ApiMessages;
+import com.com4energy.processor.api.ApiStatus;
+import com.com4energy.processor.config.properties.FileStorageProperties;
+import com.com4energy.processor.api.response.ApiResponse;
+import com.com4energy.processor.api.response.FileMetadata;
+import com.com4energy.processor.api.response.FileUploadResponse;
+import com.com4energy.processor.service.MessageProducer;
+import com.com4energy.processor.util.FileStorageUtil;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,29 +17,33 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/files")
 public class FileUploadController {
 
-    private final FileProcessingService processingService;
+    private final MessageProducer messageProducer;
+    private final FileStorageProperties fileStorageProperties;
 
-    public FileUploadController(FileProcessingService processingService) {
-        this.processingService = processingService;
+    public FileUploadController(MessageProducer messageProducer, FileStorageProperties fileStorageProperties) {
+        this.messageProducer = messageProducer;
+        this.fileStorageProperties = fileStorageProperties;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
-        Path path = Paths.get("/Users/jesus/Downloads/uploads/pending", file.getOriginalFilename());
-        Files.createDirectories(path.getParent());
-        Files.write(path, file.getBytes());
+    public ResponseEntity<FileUploadResponse> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
+        String filename = Objects.requireNonNull(file.getOriginalFilename());
+        String path = FileStorageUtil.storePendingFile(fileStorageProperties.getUploadPath(), file).toString();
 
-        // Enviar el path a procesamiento asíncrono
-        processingService.processFile(path.toFile());
+        messageProducer.sendFileMessage(filename, path);
 
-        return ResponseEntity.accepted().body("Archivo recibido y en proceso.");
+        return ResponseEntity.accepted()
+                .body(new ApiResponse<>(
+                        ApiStatus.SUCCESS,
+                        ApiMessages.FILE_UPLOADED_SUCCESSFULLY,
+                        new FileUploadResponse(new FileMetadata(filename, path))
+                ).data());
     }
+
 }
