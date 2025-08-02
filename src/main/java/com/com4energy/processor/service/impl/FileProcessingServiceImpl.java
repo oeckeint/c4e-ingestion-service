@@ -1,10 +1,9 @@
 package com.com4energy.processor.service.impl;
 
+import java.io.File;
+import org.springframework.stereotype.Service;
 import com.com4energy.processor.service.FileProcessingService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
-import java.io.File;
 
 @Slf4j
 @Service

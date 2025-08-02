@@ -1,15 +1,13 @@
 package com.com4energy.processor.messaging;
 
+import java.io.File;
+import java.util.Map;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
 import com.com4energy.processor.config.RabbitConfig;
-import com.com4energy.processor.model.FileStatus;
 import com.com4energy.processor.service.FileProcessingService;
 import com.com4energy.processor.service.FileRecordService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.stereotype.Component;
-
-import java.io.File;
-import java.util.Map;
 
 @Slf4j
 @Component

@@ -1,12 +1,11 @@
 package com.com4energy.processor.service;
 
+import java.util.Map;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Service;
 import com.com4energy.processor.config.RabbitConfig;
 import com.com4energy.processor.model.FileRecord;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.stereotype.Service;
-
-import java.util.Map;
 
 @Slf4j
 @Service
