@@ -9,6 +9,7 @@ public final class ApiMessages {
     public static final String SUCCESS = "Operation completed successfully.";
     public static final String ERROR = "An error occurred while processing the request.";
     public static final String WARNING = "Warning: The operation completed with some issues.";
+    public static final String FILE_ALREADY_EXISTS = "The file already exists in the system.";
     public static final String FILE_NOT_FOUND = "The requested file was not found.";
     public static final String FILE_RECEIVED = "File received successfully.";
     public static final String FILE_UPLOADED_SUCCESSFULLY = "File uploaded successfully.";

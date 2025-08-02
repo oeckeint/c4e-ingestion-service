@@ -1,6 +1,7 @@
 package com.com4energy.processor.service;
 
 import com.com4energy.processor.config.RabbitConfig;
+import com.com4energy.processor.model.FileRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
@@ -17,10 +18,11 @@ public class MessageProducer {
         this.rabbitTemplate = rabbitTemplate;
     }
 
-    public void sendFileMessage(String filename, String filePath) {
+    public void sendFileMessage(FileRecord record) {
         Map<String, String> payload = Map.of(
-                "filename", filename,
-                "path", filePath
+                "id", record.getId().toString(),
+                "filename", record.getFilename(),
+                "path", record.getPath()
         );
 
         rabbitTemplate.convertAndSend(
@@ -29,7 +31,8 @@ public class MessageProducer {
                 payload
         );
 
-        log.info("📤 Message sent to RabbitMQ: filename={}, path={}", filename, filePath);
+        log.info("📤 Message sent to RabbitMQ: id={}, filename={}, path={}",
+                record.getId(), record.getFilename(), record.getPath());
     }
 
 }
