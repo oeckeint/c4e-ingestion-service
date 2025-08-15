@@ -1,0 +1,40 @@
+package com.com4energy.processor.service;
+
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import org.springframework.stereotype.Service;
+import com.com4energy.processor.config.properties.FileScannerProperties;
+import com.com4energy.processor.model.FileOrigin;
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class FileScannerService {
+
+    private final FileRecordService fileRecordService;
+    private final FileScannerProperties fileScannerProperties;
+
+    public void scanAndRegisterFiles() {
+        for (String pathStr : fileScannerProperties.getPaths()) {
+            Path path = Paths.get(pathStr);
+            if (!Files.exists(path) || !Files.isDirectory(path)) {
+                continue;
+            }
+
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
+                for (Path file : stream) {
+                    if (Files.isRegularFile(file)) {
+                        String filename = file.getFileName().toString();
+                        fileRecordService.registerFileAsPendingIntoDatababase(filename, file.toAbsolutePath().toString(), FileOrigin.JOB, "system");
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Error scanning directory: " + pathStr, e);
+            }
+        }
+    }
+
+}

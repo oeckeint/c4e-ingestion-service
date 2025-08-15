@@ -17,7 +17,7 @@ public class MessageProducer {
         this.rabbitTemplate = rabbitTemplate;
     }
 
-    public void sendFileMessage(FileRecord record) {
+    public void sendFileAsMessageToRabbit(FileRecord record) {
         Map<String, String> payload = Map.of(
                 "id", record.getId().toString(),
                 "filename", record.getFilename(),
@@ -30,7 +30,7 @@ public class MessageProducer {
                 payload
         );
 
-        log.info("📤 Message sent to RabbitMQ: id={}, filename={}, path={}",
+        log.info("📤 File sent to RabbitMQ: id={}, filename={}, path={}",
                 record.getId(), record.getFilename(), record.getPath());
     }
 

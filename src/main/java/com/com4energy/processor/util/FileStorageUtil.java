@@ -23,9 +23,13 @@ public final class FileStorageUtil {
      * @return the Path of the stored file
      * @throws IOException if an I/O error occurs
      */
-    public static Path storePendingFile(String pathToStorage, MultipartFile file) throws IOException {
+    public static Path storeInPendingFilesFolder(String pathToStorage, MultipartFile file) throws IOException {
         Path path = Paths.get(pathToStorage, file.getOriginalFilename());
         Files.createDirectories(path.getParent());
+        if (Files.exists(path)) {
+            log.warn("⚠️ Archivo ya existente. No se sobrescribe: {}", path.toAbsolutePath());
+            return null;
+        }
         Files.write(path, file.getBytes());
         log.info("File {}, stored at: {}", file.getOriginalFilename(), path.toAbsolutePath());
         return path;
