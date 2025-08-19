@@ -2,9 +2,12 @@ package com.com4energy.processor.messaging;
 
 import java.io.File;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import com.com4energy.processor.config.RabbitConfig;
+import com.com4energy.processor.model.FileRecord;
 import com.com4energy.processor.service.FileProcessingService;
 import com.com4energy.processor.service.FileRecordService;
 import lombok.extern.slf4j.Slf4j;
@@ -23,11 +26,15 @@ public class FileProcessingListener {
 
     @RabbitListener(queues = RabbitConfig.QUEUE_NAME)
     public void handleFileMessage(Map<String, String> payload) {
-        String filePath = payload.get("path");
-        Long fileId = Long.parseLong(payload.get("id"));
+        String filePath = Objects.requireNonNull(payload.get("path"), "File path is required");
+        String idStr    = Objects.requireNonNull(payload.get("id"), "File ID is required");
 
-        if (filePath == null) {
-            log.error("❌ Invalid payload. 'id' or 'path' missing.");
+        Long fileId;
+
+        try {
+            fileId = Long.parseLong(idStr);
+        } catch (NumberFormatException ex) {
+            log.error("❌ Invalid 'id' format: {}", idStr);
             return;
         }
 
@@ -38,17 +45,17 @@ public class FileProcessingListener {
             return;
         }
 
-        fileRecordService.markAsProcessing(fileId);
-        try {
-            log.info("📥 Message received from RabbitMQ. Processing: {}", filePath);
-            fileProcessingService.processFile(file);
-            // fileRecordService.markAsProcessed(fileId); // TODO: 🚧 implementar actualización de estado
-            throw new UnsupportedOperationException("markAsProcessed aún no está implementado.");
-            //fileRecordService.markAsProcessed(fileId);
-        } catch (Exception e) {
-            log.error("❌ Error processing file: {}", filePath, e);
-            fileRecordService.markAsFailed(fileId);
+        Optional<FileRecord> opt = fileRecordService.findById(fileId);
+        if (opt.isEmpty()) {
+            log.error("❌ FileRecord id={} not found in DB.", fileId);
+            return;
         }
+
+        FileRecord record = opt.get();
+
+        fileRecordService.markAsProcessing(fileId);
+        log.info("📥 Message received from RabbitMQ. Processing: {}", filePath);
+        fileProcessingService.processFile(record);
 
     }
 

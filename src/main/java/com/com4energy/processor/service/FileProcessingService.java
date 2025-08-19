@@ -1,9 +1,9 @@
 package com.com4energy.processor.service;
 
-import java.io.File;
+import com.com4energy.processor.model.FileRecord;
 
 public interface FileProcessingService {
 
-    void processFile(File file);
+    void processFile(FileRecord record);
 
 }

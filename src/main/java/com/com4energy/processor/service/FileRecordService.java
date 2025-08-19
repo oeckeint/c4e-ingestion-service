@@ -48,6 +48,10 @@ public class FileRecordService {
         return saved;
     }
 
+    public Optional<FileRecord> findById(Long id) {
+        return repository.findById(id);
+    }
+
 
     public void markAsProcessing(Long id) {
         repository.findById(id).ifPresent(record -> {
