@@ -32,25 +32,27 @@ public class FileUploadController {
     private final MessageProducer messageProducer;
     private final FileUploadProperties fileUploadProperties;
     private final FileRecordService fileRecordService;
+    private final FileStorageUtil fileStorageUtil;
 
-    public FileUploadController(MessageProducer messageProducer, FileUploadProperties fileUploadProperties, FileRecordService fileRecordService) {
+    public FileUploadController(MessageProducer messageProducer, FileUploadProperties fileUploadProperties, FileRecordService fileRecordService, FileStorageUtil fileStorageUtil) {
         this.messageProducer = messageProducer;
         this.fileUploadProperties = fileUploadProperties;
         this.fileRecordService = fileRecordService;
+        this.fileStorageUtil = fileStorageUtil;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<FileUploadResponse>> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
         String filename = Objects.requireNonNull(file.getOriginalFilename());
 
-        Path storedPath = FileStorageUtil.storeInPendingFilesFolder(fileUploadProperties.getPath(), file);
+        Path storedPath = this.fileStorageUtil.storeInPendingFilesFolder(this.fileUploadProperties.getPath(), file);
         if (isNull(storedPath)) return ResponseFilesFactory.conflict(ApiMessages.FILE_ALREADY_EXISTS);;
 
         String path = storedPath.toString();
-        FileRecord record = fileRecordService.registerFileAsPendingIntoDatababase(filename, path, FileOrigin.API, "system");
+        FileRecord record = this.fileRecordService.registerFileAsPendingIntoDatababase(filename, path, FileOrigin.API);
         if (isNull(record)) return ResponseFilesFactory.conflict(ApiMessages.FILE_ALREADY_EXISTS);;
 
-        messageProducer.sendFileAsMessageToRabbit(record);
+        this.messageProducer.sendFileAsMessageToRabbit(record);
 
         FileUploadResponse response = new FileUploadResponse(new FileMetadata(filename, path));
         return ResponseFilesFactory.accepted(ApiMessages.FILE_UPLOADED_SUCCESSFULLY, response);

@@ -8,5 +8,11 @@ import lombok.Data;
 public class FileUploadProperties {
 
     private String path;
+    private String pendingPath;
+    private String processedPath;
+    private String processingPath;
+    private String duplicatesPath;
+    private String failedPath;
+    private String archivePath;
 
 }

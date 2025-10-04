@@ -28,7 +28,7 @@ public class FileScannerService {
                 for (Path file : stream) {
                     if (Files.isRegularFile(file)) {
                         String filename = file.getFileName().toString();
-                        fileRecordService.registerFileAsPendingIntoDatababase(filename, file.toAbsolutePath().toString(), FileOrigin.JOB, "system");
+                        fileRecordService.registerFileAsPendingIntoDatababase(filename, file.toAbsolutePath().toString(), FileOrigin.JOB);
                     }
                 }
             } catch (IOException e) {

@@ -17,22 +17,29 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
     private Long id;
 
     private String filename;
-    private String path;
+    private String originPath;
+    private String finalPath;
     private String extension;
 
     @Enumerated(EnumType.STRING)
     private FileType type;
-
-    @Enumerated(EnumType.STRING)
-    private FileOrigin origin;
+    private String comment;
 
     @Enumerated(EnumType.STRING)
     private FileStatus status;
 
+    @Enumerated(EnumType.STRING)
+    private FileOrigin origin;
+
+    private Integer retryCount;
+    private String hash;
+
+    @Enumerated(EnumType.STRING)
+    private FailureReason failureReason;
+
     private LocalDateTime uploadedAt;
     private LocalDateTime processedAt;
     private LocalDateTime failedAt;
-    private Integer retryCount;
     private LocalDateTime lastAttemptAt;
 
 }

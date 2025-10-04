@@ -12,9 +12,14 @@ import com.com4energy.processor.model.FileStatus;
  * Provides methods to find FileRecords by filename and path, and by status.
  */
 @Repository
-public interface FileRecordRepository extends JpaRepository<FileRecord, Long> {
+public interface
+FileRecordRepository extends JpaRepository<FileRecord, Long> {
 
-    Optional<FileRecord> findByFilenameAndPath(String filename, String path);
+    boolean existsByFilenameAndOriginPath(String filename, String originPath);
+
+    Optional<FileRecord> findByFilenameAndOriginPath(String filename, String originPath);
+
+    Optional<FileRecord> findByHash(String hash);
 
     List<FileRecord> findByStatus(FileStatus status);
 
