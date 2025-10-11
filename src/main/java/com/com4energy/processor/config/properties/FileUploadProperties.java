@@ -7,12 +7,13 @@ import lombok.Data;
 @ConfigurationProperties(prefix = "c4e.upload")
 public class FileUploadProperties {
 
-    private String path;
+    private String basePath;
     private String pendingPath;
     private String processedPath;
     private String processingPath;
     private String duplicatesPath;
     private String failedPath;
     private String archivePath;
+    private String automaticPath;
 
 }

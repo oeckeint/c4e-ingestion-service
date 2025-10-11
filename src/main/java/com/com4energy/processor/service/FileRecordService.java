@@ -1,6 +1,7 @@
 package com.com4energy.processor.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -140,12 +141,24 @@ public class FileRecordService {
         });
     }
 
+    public void saveFileRecord(FileRecord fileRecord) {
+        repository.save(fileRecord);
+    }
+
     public Optional<FileRecord> findByHash(String hash) {
         return repository.findByHash(hash);
     }
 
     public boolean existsByFilenameAndOriginPath(String filename, String originPath) {
         return repository.existsByFilenameAndOriginPath(filename, originPath);
+    }
+
+    public boolean existsFileRecordByFilename(String filename) {
+        return repository.existsFileRecordByFilename(filename);
+    }
+
+    public List<String> findAllFilenamesLike(String name) {
+        return repository.findAllFilenamesLike(name);
     }
 
 }
