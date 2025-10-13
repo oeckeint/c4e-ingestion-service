@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import com.com4energy.processor.controller.AppFeatureProperties;
+import com.com4energy.processor.config.AppFeatureProperties;
 import com.com4energy.processor.util.FileRecordUtils;
 import com.com4energy.processor.util.HashUtils;
 import org.apache.commons.io.FilenameUtils;

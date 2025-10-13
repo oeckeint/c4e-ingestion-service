@@ -1,4 +1,4 @@
-package com.com4energy.processor.controller;
+package com.com4energy.processor.config;
 
 import lombok.Getter;
 import lombok.Setter;

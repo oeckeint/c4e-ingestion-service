@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
 
-import com.com4energy.processor.controller.AppFeatureProperties;
+import com.com4energy.processor.config.AppFeatureProperties;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import com.com4energy.processor.model.FailureReason;

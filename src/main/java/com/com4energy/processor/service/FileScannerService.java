@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import com.com4energy.processor.controller.AppFeatureProperties;
+import com.com4energy.processor.config.AppFeatureProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import com.com4energy.processor.config.properties.FileScannerProperties;

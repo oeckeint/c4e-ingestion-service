@@ -1,6 +1,6 @@
 package com.com4energy.processor.service;
 
-import com.com4energy.processor.controller.AppFeatureProperties;
+import com.com4energy.processor.config.AppFeatureProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;

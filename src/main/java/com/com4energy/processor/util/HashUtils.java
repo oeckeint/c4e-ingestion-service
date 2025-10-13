@@ -1,6 +1,6 @@
 package com.com4energy.processor.util;
 
-import com.com4energy.processor.controller.AppFeatureProperties;
+import com.com4energy.processor.config.AppFeatureProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
