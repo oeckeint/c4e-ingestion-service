@@ -21,10 +21,14 @@ FileRecordRepository extends JpaRepository<FileRecord, Long> {
 
     boolean existsFileRecordByFilename(String filename);
 
+    Optional<FileRecord> findFirstByFilenameOrHash(String originalFilename, String fileHash);
+
     @Query("SELECT f.filename FROM FileRecord f WHERE f.filename LIKE :pattern")
     List<String> findAllFilenamesLike(@Param("pattern") String pattern);
 
     Optional<FileRecord> findByFilenameAndOriginPath(String filename, String originPath);
+
+    Optional<FileRecord> findByFilenameAndOriginPathOrHash(String filename, String originPath, String fileHash);
 
     Optional<FileRecord> findByHash(String hash);
 

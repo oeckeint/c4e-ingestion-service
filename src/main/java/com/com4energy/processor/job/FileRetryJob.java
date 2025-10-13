@@ -29,7 +29,7 @@ public class FileRetryJob {
 
         for (FileRecord record : pendingFiles) {
             try {
-                log.info("✅ Retrying file processing for: {}", record.getFilename());
+                log.info("✅ Processing file: {}", record.getFilename());
                 fileProcessorService.processFile(record);
                 //record.setStatus(FileStatus.PROCESSED);
                 //record.setProcessedAt(LocalDateTime.now());

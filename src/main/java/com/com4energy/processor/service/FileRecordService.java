@@ -1,8 +1,14 @@
 package com.com4energy.processor.service;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+
+import com.com4energy.processor.controller.AppFeatureProperties;
+import com.com4energy.processor.util.FileRecordUtils;
+import com.com4energy.processor.util.HashUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.com4energy.processor.model.*;
@@ -10,42 +16,51 @@ import com.com4energy.processor.repository.FileRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.persistence.EntityNotFoundException;
-import static com.com4energy.processor.util.FileUtils.extractExtension;
-import static com.com4energy.processor.util.FileUtils.resolveFileType;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileRecordService {
 
+    private final AppFeatureProperties appFeatureProperties;
     private final FileRecordRepository repository;
+    private final HashUtils hashUtils;
 
-    public FileRecord registerFileAsPendingIntoDatababase(String filename, String originPath, FileOrigin origin) {
-        Optional<FileRecord> existing = repository.findByFilenameAndOriginPath(filename, originPath);
-
-        if (existing.isPresent()) {
-            if (log.isDebugEnabled()) {
-                log.debug("File already exists in the database: {}", existing.get());
-            }
-            return null;
-        }
-
-        String extension = extractExtension(filename);
-        FileType type = resolveFileType(extension);
+    public FileRecord registerFileAsPendingIntoDatabase(String filename, String originPath, FileOrigin origin, File currentFile, FileRecord fileRecord) {
+//        String fileHash = this.hashUtils.computeHashIfEnabled(currentFile);
+//
+//        Optional<FileRecord> existing = (fileHash != null) ?
+//                repository.findByFilenameAndOriginPathOrHash(filename, originPath, fileHash) :
+//                repository.findByFilenameAndOriginPath(filename, originPath);
+//
+//        if (existing.isPresent()) {
+//            if (log.isDebugEnabled()) {
+//                log.debug("File already exists in the database: {}", existing.get());
+//            }
+//            return null;
+//        }
 
         FileRecord record = FileRecord.builder()
                 .filename(filename)
                 .originPath(originPath)
-                .extension(extension)
-                .type(type)
+                //.finalPath(currentFile.getAbsolutePath())
+                .extension(FilenameUtils.getExtension(currentFile.getName()))
                 .origin(origin)
                 .status(FileStatus.PENDING)
+                .hash(fileRecord.getHash())
                 .uploadedAt(LocalDateTime.now())
+                .retryCount(0)
                 .build();
 
-        FileRecord saved = repository.save(record);
-        log.info("📄 New file registered as pending for processing: {}", saved.getFilename());
-        return saved;
+        FileRecordUtils.defineAndSetFileTypeToFileRecord(record, currentFile);
+
+        if (!appFeatureProperties.isEnabled("persist-data")){
+            log.info("Persist records disabled by feature flag. Ignoring record: {}", record);
+            return record;
+        }
+
+        log.info("📄 New file registered as pending for processing: {}", record.getFilename());
+        return repository.save(record);
     }
 
     public Optional<FileRecord> findById(Long id) {
@@ -99,6 +114,13 @@ public class FileRecordService {
         record.setStatus(FileStatus.PROCESSED);
         record.setHash(hash);
         record.setFinalPath(finalPath);
+        record.setProcessedAt(LocalDateTime.now());
+        repository.save(record);
+    }
+
+    @Transactional
+    public void markAsProcessed(FileRecord record) {
+        record.setStatus(FileStatus.PROCESSED);
         record.setProcessedAt(LocalDateTime.now());
         repository.save(record);
     }
@@ -159,6 +181,10 @@ public class FileRecordService {
 
     public List<String> findAllFilenamesLike(String name) {
         return repository.findAllFilenamesLike(name);
+    }
+
+    public Optional<FileRecord> findFirstByFilenameOrHash(String originalFilename, String fileHash) {
+        return this.repository.findFirstByFilenameOrHash(originalFilename, fileHash);
     }
 
 }

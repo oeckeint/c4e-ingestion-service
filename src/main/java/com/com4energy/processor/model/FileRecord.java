@@ -9,7 +9,7 @@ import jakarta.persistence.*;
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
 
     @Id

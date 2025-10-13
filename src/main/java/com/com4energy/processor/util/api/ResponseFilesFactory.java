@@ -23,4 +23,10 @@ public class ResponseFilesFactory {
                 .body(new ApiResponse<>(ApiStatus.SUCCESS, message, data));
     }
 
+    public static <T> ResponseEntity<ApiResponse<T>> badRequest(String message) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>(ApiStatus.ERROR, message, null));
+    }
+
 }

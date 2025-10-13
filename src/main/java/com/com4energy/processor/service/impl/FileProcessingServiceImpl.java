@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
+
+import com.com4energy.processor.controller.AppFeatureProperties;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import com.com4energy.processor.model.FailureReason;
@@ -21,6 +23,7 @@ import static com.com4energy.processor.util.HashUtils.calculateHash;
 @RequiredArgsConstructor
 public class FileProcessingServiceImpl implements FileProcessingService {
 
+    private final AppFeatureProperties appFeatureProperties;
     private final FileRecordService fileRecordService;
     private final FileStorageUtil fileStorageUtil;
     private String hash;
@@ -33,10 +36,15 @@ public class FileProcessingServiceImpl implements FileProcessingService {
 
             if (isDuplicate(record, file)) return;
 
-            Thread.sleep(5000);
+            Path processingPath = this.fileStorageUtil.moveFileFromAutomaticToProcessing(file);
+            record.setFinalPath(processingPath.toAbsolutePath().toString());
+            record = fileRecordService.markAsProcessing(record);
+            file = processingPath.toFile();
 
-            Path finalPath = this.fileStorageUtil.moveFileToProcessed(file);
-            fileRecordService.markAsProcessed(record.getId(), this.hash, finalPath.toString());
+            Path processedPath = this.fileStorageUtil.moveFileFromProcessingToProcessed(file);
+            record.setFinalPath(processedPath.toAbsolutePath().toString());
+            fileRecordService.markAsProcessed(record);
+
             log.info("✅ File {} processed", file.getName());
         } catch (Exception e) {
             log.error("❌ Error processing file {}", record.getFilename(), e);
