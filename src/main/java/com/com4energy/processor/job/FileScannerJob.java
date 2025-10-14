@@ -17,8 +17,8 @@ public class FileScannerJob {
 
     @Scheduled(fixedDelayString = "#{fileScannerProperties.scanIntervalMs}")
     public void runScan() {
-        if (!appFeatureProperties.isEnabled("scan-files")){
-            log.warn("scanner job is disabled");
+        if (!appFeatureProperties.isEnabled("file-scanner-job")){
+            log.warn("FileScannerJob feature is disabled");
             return;
         }
         scannerService.scanAndRegisterFiles();
