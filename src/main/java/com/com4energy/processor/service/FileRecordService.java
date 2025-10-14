@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Optional;
 
 import com.com4energy.processor.config.AppFeatureProperties;
+import com.com4energy.processor.config.properties.features.ProcessorFeatures;
 import com.com4energy.processor.util.FileRecordUtils;
-import com.com4energy.processor.util.HashUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +23,8 @@ import jakarta.persistence.EntityNotFoundException;
 public class FileRecordService {
 
     private final AppFeatureProperties appFeatureProperties;
+    private final ProcessorFeatures processorFeatures;
     private final FileRecordRepository repository;
-    private final HashUtils hashUtils;
 
     public FileRecord registerFileAsPendingIntoDatabase(String filename, String originPath, FileOrigin origin, File currentFile, FileRecord fileRecord) {
 //        String fileHash = this.hashUtils.computeHashIfEnabled(currentFile);
@@ -89,16 +89,10 @@ public class FileRecordService {
         });
     }
 
-    @Transactional
     public FileRecord markAsProcessing(FileRecord record) {
-        FileRecord managedRecord = repository.findById(record.getId())
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "FileRecord not found with id " + record.getId()));
-
-        managedRecord.setStatus(FileStatus.PROCESSING);
-        managedRecord.setLastAttemptAt(LocalDateTime.now());
-
-        return repository.save(managedRecord);
+        record.setStatus(FileStatus.PROCESSING);
+        record.setLastAttemptAt(LocalDateTime.now());
+        return repository.save(record);
     }
 
     public void markAsProcessed(Long id) {
@@ -132,8 +126,8 @@ public class FileRecordService {
             return;
         }
         FileRecord currentRecord = record.get();
-        if (currentRecord.getRetryCount() > 3) {
-            this.markAsFailedA(currentRecord, reason);
+        if (currentRecord.getRetryCount() > this.processorFeatures.getMaxRetries()) {
+            this.markAsFailed(currentRecord, reason);
             return;
         }
         currentRecord.setStatus(FileStatus.RETRYING);
@@ -145,10 +139,25 @@ public class FileRecordService {
         repository.save(currentRecord);
     }
 
-    private void markAsFailedA(FileRecord fileRecord, FailureReason reason) {
+    public void markAsRetrying(FileRecord fileRecord, FailureReason reason) {
+        if (fileRecord.getRetryCount() > this.processorFeatures.getMaxRetries()) {
+            fileRecord.setComment(String.format("Reached max retries %d", this.processorFeatures.getMaxRetries()));
+            this.markAsFailed(fileRecord, FailureReason.UNKNOWN_ERROR);
+            return;
+        }
+        fileRecord.setStatus(FileStatus.RETRYING);
+        fileRecord.setLastAttemptAt(LocalDateTime.now());
+        fileRecord.setRetryCount(
+                Optional.ofNullable(fileRecord.getRetryCount()).orElse(0) + 1
+        );
+        repository.save(fileRecord);
+    }
+
+    public void markAsFailed(FileRecord fileRecord, FailureReason reason) {
         fileRecord.setStatus(FileStatus.FAILED);
-        fileRecord.setFailureReason(reason);
+        fileRecord.setLastAttemptAt(LocalDateTime.now());
         fileRecord.setFailedAt(LocalDateTime.now());
+        fileRecord.setFailureReason(reason);
         repository.save(fileRecord);
     }
 
@@ -163,7 +172,7 @@ public class FileRecordService {
         });
     }
 
-    public void saveFileRecord(FileRecord fileRecord) {
+    public void save(FileRecord fileRecord) {
         repository.save(fileRecord);
     }
 
@@ -185,6 +194,14 @@ public class FileRecordService {
 
     public Optional<FileRecord> findFirstByFilenameOrHash(String originalFilename, String fileHash) {
         return this.repository.findFirstByFilenameOrHash(originalFilename, fileHash);
+    }
+
+    public List<FileRecord> findAllByStatusIn(List<FileStatus> statuses) {
+        return this.repository.findByStatusIn(statuses);
+    }
+
+    public List<FileRecord> findAllByStatus(FileStatus status) {
+        return this.repository.findByStatus(status);
     }
 
 }
