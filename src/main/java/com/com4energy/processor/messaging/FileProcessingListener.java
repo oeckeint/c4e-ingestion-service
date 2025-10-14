@@ -1,15 +1,14 @@
 package com.com4energy.processor.messaging;
 
-import java.io.File;
 import java.util.Map;
+import java.util.Optional;
 
 import com.com4energy.processor.config.AppFeatureProperties;
+import com.com4energy.processor.model.FileStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import com.com4energy.processor.config.RabbitConfig;
-import com.com4energy.processor.messaging.dto.FileMessage;
-import com.com4energy.processor.model.FailureReason;
 import com.com4energy.processor.service.FileProcessingService;
 import com.com4energy.processor.service.FileRecordService;
 import lombok.extern.slf4j.Slf4j;
@@ -26,33 +25,21 @@ public class FileProcessingListener {
     @RabbitListener(queues = RabbitConfig.QUEUE_NAME)
     public void handleFileMessage(Map<String, String> payload) {
         if (!appFeatureProperties.isEnabled("receive-messages")){
-            log.warn("⚠️ Rabbit listener is disabled by feature flag. Ignoring message: {}", payload);
+            log.warn("RabbitListener feature is disabled. Ignoring message: {}", payload);
             return;
         }
 
-        if (payload == null || payload.get("id") == null || payload.get("path") == null) {
-            log.warn("⚠️ Ignoring invalid or empty message: {}", payload);
-            return;
-        }
-
-        FileMessage message = new FileMessage(payload);
-
-        File file = new File(message.path());
-        if (!file.exists()) {
-            log.error("❌ File not found: {}", message.path());
-            fileRecordService.markAsRetrying(message.id(), FailureReason.FILE_NOT_FOUND);
-            return;
-        }
-
-        try {
-            log.info("📥 Message received from RabbitMQ. Processing: {}", message.path());
-            fileProcessingService.processFile(
-                    fileRecordService.prepareForProcessing(message.id())
-            );
-        } catch (IllegalArgumentException e) {
-            log.error(e.getMessage());
-        }
-
+        Optional.ofNullable(payload.get("id"))
+                .map(Long::parseLong)
+                .flatMap(fileRecordService::findById)
+                .filter(record -> record.getStatus() == FileStatus.PENDING)
+                .ifPresentOrElse(
+                        record -> {
+                            log.info("Processing file: {} from RabbitMQ Queue", record.getFilename());
+                            fileProcessingService.processFile(record);
+                        },
+                        () -> log.warn("Invalid message or FileRecord not found: {}", payload)
+                );
     }
 
 }

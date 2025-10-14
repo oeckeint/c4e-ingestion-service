@@ -84,7 +84,7 @@ public final class FileStorageUtil {
             Files.write(duplicatePath, file.getBytes());
             log.info("Archivo duplicado guardado como: {}", duplicatePath.toAbsolutePath());
 
-            fileRecordService.saveFileRecord(
+            fileRecordService.save(
                     this.buidDuplicateFileRecord(
                             exisingFileRecord.get(),
                             pathToStorage + "/" + newFilename,

@@ -19,7 +19,7 @@ public class MessageProducer {
 
     public void sendFileAsMessageToRabbit(FileRecord record) {
         if (!appFeatureProperties.isEnabled("send-messages")){
-            log.info("Send messages disabled by feature flag. Ignoring message: {}", record);
+            log.info("SendMessages to Rabbit feature is disabled. Ignoring message: {}", record);
             return;
         }
 
