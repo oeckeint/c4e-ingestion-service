@@ -34,4 +34,6 @@ FileRecordRepository extends JpaRepository<FileRecord, Long> {
 
     List<FileRecord> findByStatus(FileStatus status);
 
+    List<FileRecord> findByStatusIn(List<FileStatus> statuses);
+
 }
