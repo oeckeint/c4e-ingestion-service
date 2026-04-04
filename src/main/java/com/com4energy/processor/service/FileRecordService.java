@@ -13,7 +13,7 @@ import com.com4energy.processor.outbox.domain.OutboxAggregateType;
 import com.com4energy.processor.outbox.domain.OutboxEventType;
 import com.com4energy.processor.outbox.service.OutboxService;
 import com.com4energy.processor.service.dto.FileRejectedRequest;
-import com.com4energy.processor.util.FileRecordUtils;
+import com.com4energy.processor.util.FileUtils;
 import com.com4energy.i18n.core.Messages;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,7 +63,7 @@ public class FileRecordService {
                 .retryCount(0)
                 .build();
 
-        FileRecordUtils.defineAndSetFileTypeToFileRecord(record, currentFile);
+        FileUtils.defineAndSetFileTypeToFileRecord(record, currentFile);
 
         if (!featureFlagService.isPersistDataEnabled()) {
             log.info("Persist records disabled by feature flag. Ignoring record: {}", record);
@@ -156,7 +156,7 @@ public class FileRecordService {
             record.setFinalPath(finalPath);
             record.setStatus(FileStatus.DUPLICATED);
             record.setHash(hash);
-            record.setFailureReason(FailureReason.DUPLICATE_FILE);
+            record.setFailureReason(FailureReason.DUPLICATED_FILE);
             record.setLastAttemptAt(LocalDateTime.now());
             fileRecordRepository.save(record);
         });

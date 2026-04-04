@@ -1,6 +1,7 @@
 package com.com4energy.processor.service;
 
 import com.com4energy.i18n.core.Messages;
+import com.com4energy.i18n.core.util.StringRules;
 import com.com4energy.processor.api.response.FileMetadata;
 import com.com4energy.processor.common.IngestionCommonMessageKey;
 import com.com4energy.processor.config.properties.FileUploadProperties;
@@ -22,11 +23,16 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
-@Service
+import static com.com4energy.processor.util.FileUtils.extractExtension;
+import static com.com4energy.processor.util.FileUtils.isSafeFilename;
+import static com.com4energy.processor.util.FileUtils.isValidContentType;
+
+
 @RequiredArgsConstructor
+@Service
 @Slf4j
 public class FileUploadOrchestratorService {
 
@@ -35,6 +41,7 @@ public class FileUploadOrchestratorService {
     private final FileUploadProperties fileUploadProperties;
     private final FileRecordService fileRecordService;
     private final FileStorageUtil fileStorageUtil;
+    private final Set<String> allowedExtensions;
 
     public UploadBatchResult processFiles(MultipartFile[] files) {
         if (isEmptyBatch(files)) {
@@ -64,11 +71,13 @@ public class FileUploadOrchestratorService {
                         duplicates++;
                         log.warn("Duplicate file detected: {}", file.getOriginalFilename());
                     }
-                    case ERROR ->
-                            log.error("Failed to process file after storage: {}", file.getOriginalFilename());
+                    case ERROR -> {
+                        errors++;
+                        log.error("Failed to process file after storage: {}", file.getOriginalFilename());
+                    }
                     case UPLOADED -> {
-                        uploadedFiles.add(result.metadata());
                         uploadedCount++;
+                        uploadedFiles.add(result.metadata());
                     }
 
                     case SKIPPED_EMPTY -> log.debug("Empty file skipped: {}", file.getOriginalFilename());
@@ -97,9 +106,6 @@ public class FileUploadOrchestratorService {
     }
 
     private @NotNull FileProcessResult processSingleFile(@NonNull MultipartFile file) throws IOException {
-        if (file.isEmpty()) {
-            return new FileProcessResult(FileProcessStatus.SKIPPED_EMPTY, null);
-        }
 
         FileRecord storedRecord = storePendingFileRecord(file);
         if (storedRecord == null) {
@@ -134,34 +140,81 @@ public class FileUploadOrchestratorService {
         return new FileProcessResult(FileProcessStatus.UPLOADED, metadata);
     }
 
+//    private Optional<FailureReason> resolveValidationFailureReason(MultipartFile file) {
+//        if (file == null) {
+//            return Optional.of(FailureReason.NULL_FILE);
+//        }
+//
+//        if (file.isEmpty()) {
+//            return Optional.of(FailureReason.FILE_IS_EMPTY);
+//        }
+//
+//        String filename = StringRules.trimToNull(file.getOriginalFilename());
+//        if (filename == null) {
+//            return Optional.of(FailureReason.INVALID_FILENAME);
+//        }
+//
+//        if (fileRecordService.existsFileRecordByFilename(filename)) {
+//            return Optional.of(FailureReason.DUPLICATED_FILENAME);
+//        }
+//
+//        if (file.getSize() > fileUploadProperties.maxSizeBytes()) {
+//            return Optional.of(FailureReason.FILE_TOO_LARGE);
+//        }
+//
+//        if (!filename.contains(".")) {
+//            return Optional.of(FailureReason.INVALID_EXTENSION);
+//        }
+//
+//        String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+//        boolean isAllowed = fileUploadProperties.allowedExtensions().stream()
+//                .map(value -> value.toLowerCase(Locale.ROOT))
+//                .anyMatch(ext::equals);
+//        if (!isAllowed) {
+//            return Optional.of(FailureReason.INVALID_EXTENSION);
+//        }
+//
+//        return Optional.empty();
+//    }
+
     private Optional<FailureReason> resolveValidationFailureReason(MultipartFile file) {
         if (file == null) {
             return Optional.of(FailureReason.NULL_FILE);
         }
 
-        String filename = file.getOriginalFilename();
-        if (filename == null || filename.isBlank()) {
-            return Optional.of(FailureReason.INVALID_FILENAME);
+        if (file.isEmpty()) {
+            return Optional.of(FailureReason.FILE_IS_EMPTY);
         }
 
         if (file.getSize() > fileUploadProperties.maxSizeBytes()) {
             return Optional.of(FailureReason.FILE_TOO_LARGE);
         }
 
-        if (!filename.contains(".")) {
+        String filename = StringRules.trimToNull(file.getOriginalFilename());
+        if (filename == null) {
+            return Optional.of(FailureReason.INVALID_FILENAME);
+        }
+
+        if (!isSafeFilename(filename)) {
+            return Optional.of(FailureReason.INVALID_FILENAME);
+        }
+
+        String ext = extractExtension(filename);
+        if (ext == null || !allowedExtensions.contains(ext)) {
             return Optional.of(FailureReason.INVALID_EXTENSION);
         }
 
-        String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
-        boolean isAllowed = fileUploadProperties.allowedExtensions().stream()
-                .map(value -> value.toLowerCase(Locale.ROOT))
-                .anyMatch(ext::equals);
-        if (!isAllowed) {
-            return Optional.of(FailureReason.INVALID_EXTENSION);
+        if (!isValidContentType(file)) {
+            return Optional.of(FailureReason.INVALID_CONTENT_TYPE);
+        }
+
+        if (fileRecordService.existsFileRecordByFilename(filename)) {
+            return Optional.of(FailureReason.DUPLICATED_FILENAME);
         }
 
         return Optional.empty();
     }
+
 
     private void rejectFile(MultipartFile file, FailureReason rejectionReason) {
         if (file != null) {

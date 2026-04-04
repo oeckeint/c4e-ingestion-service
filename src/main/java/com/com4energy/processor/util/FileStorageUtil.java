@@ -225,7 +225,7 @@ public final class FileStorageUtil {
                 .finalPath(duplicatePath)
                 .comment(comment)
                 .status(FileStatus.DUPLICATED)
-                .failureReason(FailureReason.DUPLICATE_FILE)
+                .failureReason(FailureReason.DUPLICATED_FILE)
                 .uploadedAt(LocalDateTime.now())
                 .processedAt(LocalDateTime.now())
                 .failedAt(LocalDateTime.now())

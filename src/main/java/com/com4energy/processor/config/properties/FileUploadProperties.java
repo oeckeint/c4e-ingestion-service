@@ -1,6 +1,9 @@
 package com.com4energy.processor.config.properties;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
@@ -20,4 +23,12 @@ public record FileUploadProperties(
         String automaticPath,
         @Positive long maxSizeBytes,
         @NotEmpty List<@NotEmpty String> allowedExtensions
-) {}
+) {
+
+    public Set<String> normalizedAllowedExtensions() {
+        return allowedExtensions.stream()
+                .map(ext -> ext.trim().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+}
