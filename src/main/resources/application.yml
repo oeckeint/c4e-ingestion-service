@@ -1,0 +1,97 @@
+spring:
+  application:
+    name: c4e-ingestion-service
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    url: ${DB_URL_SGE}
+    username: ${DB_USER_SGE}
+    password: ${DB_PASSWORD_SGE}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.springframework: INFO
+    com.com4energy: INFO
+    root: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+  health:
+    rabbit:
+      enabled: false
+
+c4e:
+  upload:
+    base-path: ${C4E_HOST_STORAGE_ROOT:/Users/jesus/Downloads/com4energy}/ingestion-service
+    pending-path: ${c4e.upload.base-path}/pending
+    processed-path: ${c4e.upload.base-path}/processed
+    processing-path: ${c4e.upload.base-path}/processing
+    duplicates-path: ${c4e.upload.base-path}/duplicates
+    failed-path: ${c4e.upload.base-path}/failed
+    archive-path: ${c4e.upload.base-path}/archive
+    automatic-path: ${c4e.upload.base-path}/automatic
+    max-size-bytes: 10485760
+    allowed-extensions: [csv, xls, xlsx, json, txt]
+  incidents:
+    enabled: true
+    types:
+      validation:
+        exchange: incident.validation.exchange
+        routingKey: incident.validation.key
+      integration:
+        exchange: incident.integration.exchange
+        routingKey: incident.integration.key
+      system:
+        exchange: incident.system.exchange
+        routingKey: incident.system.key
+
+scanner:
+  paths:
+    - ${c4e.upload.automatic-path}
+  scan-interval-ms: 10000
+
+processor:
+  features:
+    max-retries: 5
+
+file:
+  retry-interval-ms: 30000
+
+app:
+  feature:
+    enabled:
+      dev-mode: true
+      persist-data: true
+      send-messages: false
+      receive-messages: true
+      auto-purge-queue: false
+      retry-on-failure: false
+      validate-file-extension: true
+      skip-existing-files: false
+      dry-run-upload: false
+      store-in-pending-folder: true
+      compute-hash: true
+      verbose-logs: false
+      log-file-content: false
+      notify-on-error: true
+      mock-file-id: false
+      simulate-failure: true
+      delay-processing-ms: false
+      file-scanner-job: true
+      file-retry-job: false

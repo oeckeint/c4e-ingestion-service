@@ -26,11 +26,11 @@ public class MessageProducer {
         rabbitTemplate.convertAndSend(
                 RabbitConfig.EXCHANGE_NAME,
                 RabbitConfig.ROUTING_KEY,
-                new FileMessage(record.getId(), record.getOriginPath())
+                new FileMessage(record.getId(), record.getFinalPath())
         );
 
         log.info("📤 File sent to RabbitMQ: id={}, filename={}, path={}",
-                record.getId(), record.getFilename(), record.getOriginPath());
+                record.getId(), record.getFilename(), record.getFinalPath());
     }
 
 }

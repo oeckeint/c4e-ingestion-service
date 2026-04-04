@@ -17,7 +17,6 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
     private Long id;
 
     private String filename;
-    private String originPath;
     private String finalPath;
     private String extension;
 

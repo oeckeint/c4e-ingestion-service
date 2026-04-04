@@ -11,6 +11,7 @@ import com.com4energy.processor.model.FailureReason;
 import com.com4energy.processor.model.FileRecord;
 import com.com4energy.processor.service.FileProcessingService;
 import com.com4energy.processor.service.FileRecordService;
+import com.com4energy.processor.service.IncidentNotificationService;
 import com.com4energy.processor.util.FileStorageUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ public class FileProcessingServiceImpl implements FileProcessingService {
     private final AppFeatureProperties appFeatureProperties;
     private final FileRecordService fileRecordService;
     private final FileStorageUtil fileStorageUtil;
+    private final IncidentNotificationService incidentNotificationService;
 
     @Async
     @Override
@@ -31,7 +33,7 @@ public class FileProcessingServiceImpl implements FileProcessingService {
             log.info("✅ Processing file: {}", record.getFilename());
             record = fileRecordService.markAsProcessing(record);
 
-            Path processingPath = this.fileStorageUtil.moveFileFromAutomaticToProcessing(new File(record.getOriginPath()));
+            Path processingPath = this.fileStorageUtil.moveFileFromAutomaticToProcessing(new File(record.getFinalPath()));
             record.setFinalPath(processingPath.toAbsolutePath().toString());
             this.fileRecordService.save(record);
 
@@ -45,6 +47,7 @@ public class FileProcessingServiceImpl implements FileProcessingService {
         } catch (Exception e) {
             log.error("❌ Error processing file {}", record.getFilename(), e);
             fileRecordService.markAsRetrying(record, FailureReason.UNKNOWN_ERROR);
+            incidentNotificationService.notifyProcessingError(record, e);
         }
     }
 

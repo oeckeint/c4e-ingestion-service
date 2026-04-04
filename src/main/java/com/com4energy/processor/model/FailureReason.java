@@ -1,12 +1,29 @@
 package com.com4energy.processor.model;
 
+import com.com4energy.processor.common.IngestionCommonMessageKey;
+import com.com4energy.i18n.core.Messages;
+
 public enum FailureReason {
-    FILE_NOT_FOUND,
-    INVALID_FILE_FORMAT,
-    PROCESSING_ERROR,
-    DUPLICATE_FILE,
-    UNAUTHORIZED_ACCESS,
-    TIMEOUT,
-    MAX_RETRIES_EXCEEDED,
-    UNKNOWN_ERROR
+    FILE_NOT_FOUND(IngestionCommonMessageKey.FAILURE_REASON_FILE_NOT_FOUND),
+    INVALID_FILE_FORMAT(IngestionCommonMessageKey.FAILURE_REASON_INVALID_FILE_FORMAT),
+    INVALID_EXTENSION(IngestionCommonMessageKey.FAILURE_REASON_INVALID_EXTENSION),
+    FILE_TOO_LARGE(IngestionCommonMessageKey.FAILURE_REASON_FILE_TOO_LARGE),
+    INVALID_FILENAME(IngestionCommonMessageKey.FAILURE_REASON_INVALID_FILENAME),
+    PROCESSING_ERROR(IngestionCommonMessageKey.FAILURE_REASON_PROCESSING_ERROR),
+    DUPLICATE_FILE(IngestionCommonMessageKey.FAILURE_REASON_DUPLICATE_FILE),
+    UNAUTHORIZED_ACCESS(IngestionCommonMessageKey.FAILURE_REASON_UNAUTHORIZED_ACCESS),
+    TIMEOUT(IngestionCommonMessageKey.FAILURE_REASON_TIMEOUT),
+    MAX_RETRIES_EXCEEDED(IngestionCommonMessageKey.FAILURE_REASON_MAX_RETRIES_EXCEEDED),
+    NULL_FILE(IngestionCommonMessageKey.FAILURE_REASON_NULL_FILE),
+    UNKNOWN_ERROR(IngestionCommonMessageKey.FAILURE_REASON_UNKNOWN_ERROR);
+
+    private final IngestionCommonMessageKey messageKey;
+
+    FailureReason(IngestionCommonMessageKey messageKey) {
+        this.messageKey = messageKey;
+    }
+
+    public String getDescription() {
+        return Messages.get(messageKey);
+    }
 }

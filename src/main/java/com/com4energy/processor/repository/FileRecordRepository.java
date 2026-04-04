@@ -17,7 +17,7 @@ import com.com4energy.processor.model.FileStatus;
 public interface
 FileRecordRepository extends JpaRepository<FileRecord, Long> {
 
-    boolean existsByFilenameAndOriginPath(String filename, String originPath);
+    boolean existsByFilenameAndFinalPath(String filename, String finalPath);
 
     boolean existsFileRecordByFilename(String filename);
 
@@ -26,9 +26,9 @@ FileRecordRepository extends JpaRepository<FileRecord, Long> {
     @Query("SELECT f.filename FROM FileRecord f WHERE f.filename LIKE :pattern")
     List<String> findAllFilenamesLike(@Param("pattern") String pattern);
 
-    Optional<FileRecord> findByFilenameAndOriginPath(String filename, String originPath);
+    Optional<FileRecord> findByFilenameAndFinalPath(String filename, String finalPath);
 
-    Optional<FileRecord> findByFilenameAndOriginPathOrHash(String filename, String originPath, String fileHash);
+    Optional<FileRecord> findByFilenameAndFinalPathOrHash(String filename, String finalPath, String fileHash);
 
     Optional<FileRecord> findByHash(String hash);
 

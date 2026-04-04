@@ -1,12 +1,11 @@
 -- liquibase formatted sql
 
--- changeset jesus:CIS-4
+-- changeset jesus:CIS-004
 CREATE TABLE file_records (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
 
     -- Información del archivo
     filename VARCHAR(255) NOT NULL,
-    origin_path VARCHAR(512) NOT NULL,
     final_path VARCHAR(512),
     extension VARCHAR(10),
     type VARCHAR(50),
@@ -31,5 +30,10 @@ CREATE TABLE file_records (
     updated_at TIMESTAMP,
     updated_by VARCHAR(100),
 
-    CONSTRAINT uk_file_unique_path UNIQUE (filename, origin_path)
+    INDEX idx_status_uploaded (status, uploaded_at),
+    INDEX idx_status_retry (status, retry_count, last_attempt_at),
+    INDEX idx_hash (hash),
+    INDEX idx_created_at (created_at)
 );
+
+-- rollback DROP TABLE file_records;

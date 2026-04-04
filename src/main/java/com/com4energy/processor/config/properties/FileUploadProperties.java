@@ -1,19 +1,23 @@
 package com.com4energy.processor.config.properties;
 
+import java.util.List;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import lombok.Data;
+import org.springframework.validation.annotation.Validated;
 
-@Data
+@Validated
 @ConfigurationProperties(prefix = "c4e.upload")
-public class FileUploadProperties {
-
-    private String basePath;
-    private String pendingPath;
-    private String processedPath;
-    private String processingPath;
-    private String duplicatesPath;
-    private String failedPath;
-    private String archivePath;
-    private String automaticPath;
-
-}
+public record FileUploadProperties(
+        String basePath,
+        String pendingPath,
+        String processedPath,
+        String processingPath,
+        String duplicatesPath,
+        String failedPath,
+        String archivePath,
+        String automaticPath,
+        @Positive long maxSizeBytes,
+        @NotEmpty List<@NotEmpty String> allowedExtensions
+) {}
