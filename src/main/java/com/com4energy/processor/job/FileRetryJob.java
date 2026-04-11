@@ -25,8 +25,8 @@ public class FileRetryJob {
             log.warn("FileRetryJob feature is disabled");
             return;
         }
-        for (FileRecord record : fileRecordService.findAllByStatus(FileStatus.RETRYING)) {
-            log.info("Processing file: {} from FileRetryJob", record.getFilename());
+        for (FileRecord record : fileRecordService.findAllByStatus(FileStatus.RETRY)) {
+            log.info("Processing file: {} from FileRetryJob", record.getOriginalFilename());
             fileProcessorService.processFile(record);
         }
     }

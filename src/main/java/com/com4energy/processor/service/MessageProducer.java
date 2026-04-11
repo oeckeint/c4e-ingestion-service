@@ -29,8 +29,8 @@ public class MessageProducer {
                 new FileMessage(record.getId(), record.getFinalPath())
         );
 
-        log.info("📤 File sent to RabbitMQ: id={}, filename={}, path={}",
-                record.getId(), record.getFilename(), record.getFinalPath());
+        log.info("📤 File sent to RabbitMQ: id={}, originalFilename={}, path={}",
+                record.getId(), record.getOriginalFilename(), record.getFinalPath());
     }
 
 }

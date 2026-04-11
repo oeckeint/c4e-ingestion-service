@@ -1,249 +1,107 @@
 package com.com4energy.processor.service;
 
-import com.com4energy.i18n.core.Messages;
-import com.com4energy.i18n.core.util.StringRules;
-import com.com4energy.processor.api.response.FileMetadata;
 import com.com4energy.processor.common.IngestionCommonMessageKey;
+import com.com4energy.processor.common.InternalServices;
 import com.com4energy.processor.config.properties.FileUploadProperties;
 import com.com4energy.processor.model.FailureReason;
-import com.com4energy.processor.model.FileOrigin;
-import com.com4energy.processor.model.FileRecord;
-import com.com4energy.processor.service.dto.FileRejectedRequest;
-import com.com4energy.processor.service.dto.UploadBatchResult;
+import com.com4energy.processor.outbox.service.OutboxService;
+import com.com4energy.processor.service.dto.FileContext;
+import com.com4energy.processor.service.dto.FileHandlingResult;
+import com.com4energy.processor.service.dto.FileBatchResult;
+import com.com4energy.processor.service.factory.FileContextMessageFactory;
+import com.com4energy.processor.service.validation.FileValidator;
+import com.com4energy.processor.service.validation.ValidationContext;
 import com.com4energy.processor.util.FileStorageUtil;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.util.HtmlUtils;
 
-import java.io.File;
-import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-
-import static com.com4energy.processor.util.FileUtils.extractExtension;
-import static com.com4energy.processor.util.FileUtils.isSafeFilename;
-import static com.com4energy.processor.util.FileUtils.isValidContentType;
-
 
 @RequiredArgsConstructor
 @Service
 @Slf4j
 public class FileUploadOrchestratorService {
 
-    private record FileProcessResult(FileProcessStatus status, FileMetadata metadata) {}
-
     private final FileUploadProperties fileUploadProperties;
     private final FileRecordService fileRecordService;
+    private final OutboxService outboxService;
     private final FileStorageUtil fileStorageUtil;
-    private final Set<String> allowedExtensions;
+    private final List<FileValidator> validators;
+    private final FileContextMessageFactory fileContextMessageFactory;
 
-    public UploadBatchResult processFiles(MultipartFile[] files) {
-        if (isEmptyBatch(files)) {
-            return buildEmptyBatchResult();
-        }
+    public FileBatchResult processFiles(MultipartFile[] files) {
+        FileBatchResult fileBatchResult = FileBatchResult.fromFileContexts(getFileContexts(files));
 
-        List<FileMetadata> uploadedFiles = new ArrayList<>();
-        int duplicates = 0;
-        int errors = 0;
-        int processed = 0;
-        int uploadedCount = 0;
+        fileBatchResult.failedFiles().forEach(this::processRejectFile);
+        fileBatchResult.duplicatedFiles().forEach(this::processDuplicatedFile);
+        fileBatchResult.validFiles().forEach(this::processNewFile);
 
-        for (MultipartFile file : files) {
-            processed++;
-            Optional<FailureReason> failureReason = resolveValidationFailureReason(file);
-            if (failureReason.isPresent()) {
-                rejectFile(file, failureReason.get());
-                errors++;
-                continue;
-            }
+        return fileBatchResult;
+    }
 
-            try {
-                FileProcessResult result = processSingleFile(file);
+    public List<FileContext> getFileContexts(MultipartFile[] files) {
+        return files == null ? List.of() :
+                Arrays.stream(files)
+                .map(this::runValidationsForSingleFile)
+                .toList();
+    }
 
-                switch (result.status()) {
-                    case DUPLICATE -> {
-                        duplicates++;
-                        log.warn("Duplicate file detected: {}", file.getOriginalFilename());
-                    }
-                    case ERROR -> {
-                        errors++;
-                        log.error("Failed to process file after storage: {}", file.getOriginalFilename());
-                    }
-                    case UPLOADED -> {
-                        uploadedCount++;
-                        uploadedFiles.add(result.metadata());
-                    }
+    private FileContext runValidationsForSingleFile(MultipartFile file) {
+        ValidationContext validationContext = ValidationContext.from(file);
+        List<FailureReason> errors = new ArrayList<>();
 
-                    case SKIPPED_EMPTY -> log.debug("Empty file skipped: {}", file.getOriginalFilename());
+        for (FileValidator fileValidator : this.validators) {
+            Optional<FailureReason> result = fileValidator.validate(validationContext);
 
-                }
-            } catch (IOException e) {
-                errors++;
-                log.error("Error processing file: {} - IOException occurred during file storage or registration", file.getOriginalFilename(), e);
-            } catch (Exception e) {
-                errors++;
-                log.error("Unexpected error processing file: {} - {}", file.getOriginalFilename(), e.getMessage(), e);
+            if (result.isPresent()) {
+                FailureReason reason = result.get();
+                errors.add(reason);
+
+                if (fileValidator.isFailFast())
+                    return switch (reason) {
+                        case DUPLICATED_ORIGINAL_FILENAME -> FileContext.fromWithDuplicatedOriginalFilenameStatus(validationContext, errors, reason);
+                        case DUPLICATED_CONTENT -> FileContext.fromWithDuplicatedContentStatus(validationContext, errors, reason);
+                        default -> FileContext.fromWithCriticalValidationFailedStatus(validationContext, errors, reason);
+                    };
             }
         }
 
-        UploadBatchResult uploadBatchResult = UploadBatchResult.builder()
-                .duplicates(duplicates)
-                .errors(errors)
-                .processed(processed)
-                .uploadedData(uploadedFiles)
-                .uploadedCount(uploadedCount).build();
+        if (!errors.isEmpty())
+            return FileContext.fromWithValidationFailed(validationContext, errors);
 
-        log.info(Messages.format(IngestionCommonMessageKey.UPLOAD_BATCH_COMPLETED_LOG,
-                uploadBatchResult.duplicates(), uploadBatchResult.errors(), uploadBatchResult.processed(), uploadBatchResult.uploadedData(), uploadBatchResult.uploadedCount()));
-
-        return uploadBatchResult;
+        return FileContext.fromWithValidStatus(validationContext);
     }
 
-    private @NotNull FileProcessResult processSingleFile(@NonNull MultipartFile file) throws IOException {
+    public FileHandlingResult processRejectFile(@NonNull FileContext fileContext) {
+        if (!fileContext.isInvalid())
+            throw new IllegalArgumentException(fileContextMessageFactory.format(IngestionCommonMessageKey.FILE_REJECT_EXPECTS_INVALID_CONTEXT_ERROR, fileContext));
 
-        FileRecord storedRecord = storePendingFileRecord(file);
-        if (storedRecord == null) {
-            return new FileProcessResult(FileProcessStatus.DUPLICATE, null);
-        }
-
-        String normalizedFilename = new File(storedRecord.getFinalPath()).getName();
-        return registerAndPublish(normalizedFilename, storedRecord);
+        FileHandlingResult afterStorageResult = fileStorageUtil.saveInDiskOverridingExisting(Paths.get(fileUploadProperties.rejectedPath()), fileContext);
+        return this.outboxService.saveRejected(afterStorageResult, InternalServices.CHAIN_VALIDATION);
     }
 
-    private FileRecord storePendingFileRecord(MultipartFile file) throws IOException {
-        return fileStorageUtil.storeInPendingFilesFolder(fileUploadProperties.automaticPath(), file);
+    public FileHandlingResult processNewFile(@NonNull FileContext fileContext) {
+        if (fileContext.isInvalid())
+            throw new IllegalArgumentException(fileContextMessageFactory.format(IngestionCommonMessageKey.FILE_SAVE_NEW_EXPECTS_VALID_CONTEXT_ERROR, fileContext));
+
+        FileHandlingResult afterStorageResult = fileStorageUtil.saveInDiskOverridingExisting(Paths.get(fileUploadProperties.automaticPath()), fileContext);
+        return fileRecordService.saveNew(afterStorageResult);
     }
 
-    private FileProcessResult registerAndPublish(String filename,
-                                                       @NonNull FileRecord storedRecord) {
-        String originPath = storedRecord.getFinalPath();
-        File currentFile = new File(originPath);
-
-        FileRecord savedRecord = fileRecordService.registerFileAsPendingIntoDatabase(
-                filename, originPath, FileOrigin.API, currentFile, storedRecord
-        );
-
-        if (savedRecord == null) {
-            return new FileProcessResult(FileProcessStatus.ERROR, null);
+    public FileHandlingResult processDuplicatedFile(@NonNull FileContext fileContext) {
+        if (fileContext.isDuplicated()) {
+            FileHandlingResult afterStorageResult = fileStorageUtil.saveInDiskOverridingExisting(Paths.get(fileUploadProperties.duplicatesPath()), fileContext);
+            return outboxService.saveDuplicated(afterStorageResult, InternalServices.CHAIN_VALIDATION);
         }
 
-        FileMetadata metadata = new FileMetadata(
-                HtmlUtils.htmlEscape(filename),
-                HtmlUtils.htmlEscape(originPath)
-        );
-        return new FileProcessResult(FileProcessStatus.UPLOADED, metadata);
-    }
-
-//    private Optional<FailureReason> resolveValidationFailureReason(MultipartFile file) {
-//        if (file == null) {
-//            return Optional.of(FailureReason.NULL_FILE);
-//        }
-//
-//        if (file.isEmpty()) {
-//            return Optional.of(FailureReason.FILE_IS_EMPTY);
-//        }
-//
-//        String filename = StringRules.trimToNull(file.getOriginalFilename());
-//        if (filename == null) {
-//            return Optional.of(FailureReason.INVALID_FILENAME);
-//        }
-//
-//        if (fileRecordService.existsFileRecordByFilename(filename)) {
-//            return Optional.of(FailureReason.DUPLICATED_FILENAME);
-//        }
-//
-//        if (file.getSize() > fileUploadProperties.maxSizeBytes()) {
-//            return Optional.of(FailureReason.FILE_TOO_LARGE);
-//        }
-//
-//        if (!filename.contains(".")) {
-//            return Optional.of(FailureReason.INVALID_EXTENSION);
-//        }
-//
-//        String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
-//        boolean isAllowed = fileUploadProperties.allowedExtensions().stream()
-//                .map(value -> value.toLowerCase(Locale.ROOT))
-//                .anyMatch(ext::equals);
-//        if (!isAllowed) {
-//            return Optional.of(FailureReason.INVALID_EXTENSION);
-//        }
-//
-//        return Optional.empty();
-//    }
-
-    private Optional<FailureReason> resolveValidationFailureReason(MultipartFile file) {
-        if (file == null) {
-            return Optional.of(FailureReason.NULL_FILE);
-        }
-
-        if (file.isEmpty()) {
-            return Optional.of(FailureReason.FILE_IS_EMPTY);
-        }
-
-        if (file.getSize() > fileUploadProperties.maxSizeBytes()) {
-            return Optional.of(FailureReason.FILE_TOO_LARGE);
-        }
-
-        String filename = StringRules.trimToNull(file.getOriginalFilename());
-        if (filename == null) {
-            return Optional.of(FailureReason.INVALID_FILENAME);
-        }
-
-        if (!isSafeFilename(filename)) {
-            return Optional.of(FailureReason.INVALID_FILENAME);
-        }
-
-        String ext = extractExtension(filename);
-        if (ext == null || !allowedExtensions.contains(ext)) {
-            return Optional.of(FailureReason.INVALID_EXTENSION);
-        }
-
-        if (!isValidContentType(file)) {
-            return Optional.of(FailureReason.INVALID_CONTENT_TYPE);
-        }
-
-        if (fileRecordService.existsFileRecordByFilename(filename)) {
-            return Optional.of(FailureReason.DUPLICATED_FILENAME);
-        }
-
-        return Optional.empty();
-    }
-
-
-    private void rejectFile(MultipartFile file, FailureReason rejectionReason) {
-        if (file != null) {
-            FailureReason safeReason = Optional.ofNullable(rejectionReason).orElse(FailureReason.UNKNOWN_ERROR);
-            String finalPath = fileStorageUtil.storeFailedFileAndResolveAbsolutePath(file).orElse(null);
-
-            fileRecordService.saveRejected(
-                    FileRejectedRequest.builder()
-                            .filename(file.getOriginalFilename())
-                            .finalPath(finalPath)
-                            .reason(safeReason)
-                            .build());
-        }
-    }
-
-    private boolean isEmptyBatch(MultipartFile[] files) {
-        return files == null || files.length == 0;
-    }
-
-    private UploadBatchResult buildEmptyBatchResult() {
-        log.warn(Messages.get(IngestionCommonMessageKey.UPLOAD_EMPTY_FILES_ARRAY_LOG));
-        return new UploadBatchResult(0, 0, 0, List.of(), 0);
-    }
-
-    private enum FileProcessStatus {
-        SKIPPED_EMPTY,
-        DUPLICATE,
-        UPLOADED,
-        ERROR
+        throw new IllegalArgumentException(fileContextMessageFactory.format(IngestionCommonMessageKey.FILE_SAVE_DUPLICATED_EXPECTS_DUPLICATED_CONTEXT_ERROR, fileContext));
     }
 
 }

@@ -2,10 +2,11 @@
 
 -- changeset jesus:CIS-004
 CREATE TABLE file_records (
+
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
 
-    -- Información del archivo
-    filename VARCHAR(255) NOT NULL,
+    original_filename VARCHAR(255) NULL COLLATE utf8mb4_bin,
+    final_filename VARCHAR(255) NOT NULL COLLATE utf8mb4_bin,
     final_path VARCHAR(512),
     extension VARCHAR(10),
     type VARCHAR(50),
@@ -15,7 +16,7 @@ CREATE TABLE file_records (
     status VARCHAR(50),
     origin VARCHAR(50),
     retry_count INT DEFAULT 0,
-    hash VARCHAR(64),
+    hash VARCHAR(64) NOT NULL,
     failure_reason VARCHAR(100) NULL,
 
     -- Timestamps importantes
@@ -30,10 +31,12 @@ CREATE TABLE file_records (
     updated_at TIMESTAMP,
     updated_by VARCHAR(100),
 
+    INDEX idx_original_filename (original_filename),
     INDEX idx_status_uploaded (status, uploaded_at),
     INDEX idx_status_retry (status, retry_count, last_attempt_at),
-    INDEX idx_hash (hash),
+    UNIQUE INDEX idx_hash (hash),
     INDEX idx_created_at (created_at)
+
 );
 
 -- rollback DROP TABLE file_records;

@@ -30,6 +30,7 @@ public class StorageDirectoriesInitializer implements ApplicationRunner {
         ensureDirectory("c4e.upload.processing-path", fileUploadProperties.processingPath());
         ensureDirectory("c4e.upload.duplicates-path", fileUploadProperties.duplicatesPath());
         ensureDirectory("c4e.upload.failed-path", fileUploadProperties.failedPath());
+        ensureDirectory("c4e.upload.rejected-path", fileUploadProperties.rejectedPath());
         ensureDirectory("c4e.upload.archive-path", fileUploadProperties.archivePath());
         ensureDirectory("c4e.upload.automatic-path", fileUploadProperties.automaticPath());
 

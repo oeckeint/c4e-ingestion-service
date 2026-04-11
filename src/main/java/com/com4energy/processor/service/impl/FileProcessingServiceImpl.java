@@ -3,7 +3,6 @@ package com.com4energy.processor.service.impl;
 import java.io.File;
 import java.nio.file.Path;
 
-import com.com4energy.processor.config.AppFeatureProperties;
 import lombok.NonNull;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -21,33 +20,39 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class FileProcessingServiceImpl implements FileProcessingService {
 
-    private final AppFeatureProperties appFeatureProperties;
     private final FileRecordService fileRecordService;
     private final FileStorageUtil fileStorageUtil;
     private final IncidentNotificationService incidentNotificationService;
 
     @Async
     @Override
-    public void processFile(@NonNull FileRecord record) {
+    public void processFile(@NonNull FileRecord fileRecord) {
         try {
-            log.info("✅ Processing file: {}", record.getFilename());
-            record = fileRecordService.markAsProcessing(record);
+            log.info("✅ Processing file: {}", fileRecord.getOriginalFilename());
+            fileRecord.markAsProcessing();
+            fileRecordService.save(fileRecord);
 
-            Path processingPath = this.fileStorageUtil.moveFileFromAutomaticToProcessing(new File(record.getFinalPath()));
-            record.setFinalPath(processingPath.toAbsolutePath().toString());
-            this.fileRecordService.save(record);
+            Path processingPath = this.fileStorageUtil.moveFileFromAutomaticToProcessing(new File(fileRecord.getFinalPath()));
+            if (processingPath == null) {
+                throw new IllegalStateException("Could not move file to processing path");
+            }
 
             File file = processingPath.toFile();
 
             Path processedPath = this.fileStorageUtil.moveFileFromProcessingToProcessed(file);
-            record.setFinalPath(processedPath.toAbsolutePath().toString());
-            fileRecordService.markAsProcessed(record);
+            if (processedPath == null) {
+                throw new IllegalStateException("Could not move file to processed path");
+            }
 
-            log.info("✅ File {} processed", record.getFilename());
+            fileRecord.markAsSucceded();
+            fileRecordService.save(fileRecord);
+
+            log.info("✅ File {} processed", fileRecord.getOriginalFilename());
         } catch (Exception e) {
-            log.error("❌ Error processing file {}", record.getFilename(), e);
-            fileRecordService.markAsRetrying(record, FailureReason.UNKNOWN_ERROR);
-            incidentNotificationService.notifyProcessingError(record, e);
+            log.error("❌ Error processing file {}", fileRecord.getOriginalFilename(), e);
+            fileRecord.markAsRetry(FailureReason.UNKNOWN_ERROR);
+            fileRecordService.save(fileRecord);
+            incidentNotificationService.notifyProcessingError(fileRecord, e);
         }
     }
 

@@ -19,15 +19,23 @@ public record FileUploadProperties(
         String processingPath,
         String duplicatesPath,
         String failedPath,
+        String rejectedPath,
         String archivePath,
         String automaticPath,
         @Positive long maxSizeBytes,
-        @NotEmpty List<@NotEmpty String> allowedExtensions
+        @NotEmpty List<@NotEmpty String> allowedExtensions,
+        @NotEmpty List<@NotEmpty String> allowedContentTypes
 ) {
 
     public Set<String> normalizedAllowedExtensions() {
         return allowedExtensions.stream()
                 .map(ext -> ext.trim().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    public Set<String> normalizedAllowedContentTypes() {
+        return allowedContentTypes.stream()
+                .map(contentType -> contentType.trim().toLowerCase(Locale.ROOT))
                 .collect(Collectors.toUnmodifiableSet());
     }
 

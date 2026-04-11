@@ -36,6 +36,7 @@ class StorageDirectoriesInitializerTest {
         assertTrue(Files.isDirectory(Path.of(upload.processingPath())));
         assertTrue(Files.isDirectory(Path.of(upload.duplicatesPath())));
         assertTrue(Files.isDirectory(Path.of(upload.failedPath())));
+        assertTrue(Files.isDirectory(Path.of(upload.rejectedPath())));
         assertTrue(Files.isDirectory(Path.of(upload.archivePath())));
         assertTrue(Files.isDirectory(Path.of(upload.automaticPath())));
         assertTrue(Files.isDirectory(Path.of(scanner.getPaths().get(0))));
@@ -49,10 +50,12 @@ class StorageDirectoriesInitializerTest {
                 tempDir.resolve("ingestion-service/processing").toString(),
                 tempDir.resolve("ingestion-service/duplicates").toString(),
                 tempDir.resolve("ingestion-service/failed").toString(),
+                tempDir.resolve("ingestion-service/rejected").toString(),
                 tempDir.resolve("ingestion-service/archive").toString(),
                 tempDir.resolve("ingestion-service/automatic").toString(),
                 10L * 1024 * 1024,
-                List.of("csv", "xls", "xlsx", "json", "txt")
+                List.of("csv", "xls", "xlsx", "json", "txt"),
+                List.of("text/xml", "application/xml")
         );
     }
 
@@ -65,10 +68,12 @@ class StorageDirectoriesInitializerTest {
                 tempDir.resolve("processing").toString(),
                 tempDir.resolve("duplicates").toString(),
                 tempDir.resolve("failed").toString(),
+                tempDir.resolve("rejected").toString(),
                 tempDir.resolve("archive").toString(),
                 tempDir.resolve("automatic").toString(),
                 10L * 1024 * 1024,
-                List.of("csv")
+                List.of("csv"),
+                List.of("text/xml")
         );
 
         FileScannerProperties scanner = new FileScannerProperties();

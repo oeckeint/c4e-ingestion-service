@@ -44,46 +44,6 @@ public class IncidentNotificationService {
     @Value("${spring.application.name:c4e-ingestion-service}")
     private String serviceName;
 
-    public void enqueueFileValidationError(String filename, String detail) {
-        if (!featureFlagService.isNotifyOnErrorEnabled()) {
-            return;
-        }
-
-        IncidentEvent event = new IncidentEvent(
-                UUID.randomUUID().toString(),
-                serviceName,
-                resolveEnvironment(),
-                "/api/files/upload",
-                "processFiles",
-                "POST",
-                null,
-                null,
-                null,
-                "InvalidFileException",
-                detail,
-                null,
-                IncidentCategory.VALIDATION,
-                IncidentSeverity.WARN,
-                IncidentStatus.NEW,
-                "INGESTION_INVALID_FILE",
-                filename,
-                extractExtension(filename),
-                null,
-                buildValidationMetadata(filename, detail),
-                serviceName,
-                LocalDateTime.now(),
-                serviceName,
-                Instant.now()
-        );
-
-        outboxService.saveRejectedFileEvent(
-                "INCIDENT",
-                event.id(),
-                INVALID_FILE_EVENT_TYPE,
-                serializeIncidentPayload(event)
-        );
-    }
-
     public void notifyProcessingError(FileRecord fileRecord, Exception exception) {
         if (!featureFlagService.isNotifyOnErrorEnabled()) {
             return;
@@ -113,7 +73,7 @@ public class IncidentNotificationService {
                     IncidentSeverity.ERROR,
                     IncidentStatus.NEW,
                     "INGESTION_PROCESSING_ERROR",
-                    fileRecord.getFilename(),
+                    fileRecord.getOriginalFilename(),
                     fileRecord.getExtension(),
                     fileRecord.getFinalPath(),
                     buildMetadata(fileRecord),
@@ -125,7 +85,7 @@ public class IncidentNotificationService {
 
             incidentPublisher.send(IncidentType.SYSTEM, event);
         } catch (Exception publishException) {
-            log.warn("Could not publish incident event for file {}", fileRecord.getFilename(), publishException);
+            log.warn("Could not publish incident event for file {}", fileRecord.getOriginalFilename(), publishException);
         }
     }
 
@@ -190,7 +150,7 @@ public class IncidentNotificationService {
         LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("filename", filename);
         metadata.put("reason", detail);
-        return toJson(metadata, "Cannot serialize incident validation metadata for filename=" + filename);
+        return toJson(metadata, "Cannot serialize incident validation metadata for originalFilename=" + filename);
     }
 
     private String toJson(Object value, String errorMessage) {

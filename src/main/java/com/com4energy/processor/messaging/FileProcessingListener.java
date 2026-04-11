@@ -35,7 +35,7 @@ public class FileProcessingListener {
                 .filter(record -> record.getStatus() == FileStatus.PENDING)
                 .ifPresentOrElse(
                         record -> {
-                            log.info("Processing file: {} from RabbitMQ Queue", record.getFilename());
+                            log.info("Processing file: {} from RabbitMQ Queue", record.getOriginalFilename());
                             fileProcessingService.processFile(record);
                         },
                         () -> log.warn("Invalid message or FileRecord not found: {}", payload)

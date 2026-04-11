@@ -6,16 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
-import com.com4energy.processor.model.FailureReason;
-import com.com4energy.processor.model.FileRecord;
 import com.com4energy.processor.model.FileStatus;
-import com.com4energy.processor.service.FileRecordService;
+import com.com4energy.processor.service.dto.FileContext;
+import com.com4energy.processor.service.dto.FileHandlingResult;
+import com.com4energy.processor.service.validation.ValidationContext;
 import org.apache.commons.io.FilenameUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,9 +28,7 @@ public final class FileStorageUtil {
     private static final String DEFAULT_FILENAME = "file";
     private static final String SAFE_FILENAME_REGEX = "[^A-Za-z0-9._-]";
 
-    private final HashUtils hashUtils;
     private final FileUploadProperties fileUploadProperties;
-    private final FileRecordService fileRecordService;
 
     public Path moveFileFromAutomaticToProcessing(File file) {
         return moveFile(file, fileUploadProperties.processingPath() + "/" + defineSubFolder(file), "processing");
@@ -58,7 +52,7 @@ public final class FileStorageUtil {
 
     /**
      * Persists a {@link MultipartFile} directly into the configured failed folder.
-     * If the filename is blank or null the file is stored under {@value DEFAULT_FILENAME}.
+     * If the originalFilename is blank or null the file is stored under {@value DEFAULT_FILENAME}.
      *
      * @param file the uploaded file that failed validation
      * @return the absolute {@link Path} where the file was written, or {@code null} on I/O error
@@ -86,69 +80,96 @@ public final class FileStorageUtil {
     }
 
     /**
-     * Stores a pending file in the specified storage path.
-     *
-     * @param pathToStorage the directory where the file will be stored
-     * @param file          the MultipartFile to be stored
-     * @return the Path of the stored file
-     * @throws IOException if an I/O error occurs
+     * Stores a MultipartFile in a base path with path traversal protection.
+     * The originalFilename is inferred from {@link MultipartFile#getOriginalFilename()}.
+     * Overwrites the file if it already exists.
      */
-    public FileRecord storeInPendingFilesFolder(String pathToStorage, MultipartFile file) throws IOException {
-        String originalFilename = sanitizeFilename(Objects.requireNonNull(file.getOriginalFilename()));
-        Path basePath = Paths.get(pathToStorage).toAbsolutePath().normalize();
-        Path storagePath = basePath.resolve(originalFilename).normalize();
-        if (!storagePath.startsWith(basePath)) {
-            throw new IOException("Invalid file path after sanitization");
+    public Path saveInDiskOverridingExisting(Path basePath, MultipartFile file) {
+        return saveInDiskOverridingExisting(basePath, file, true);
+    }
+
+    /**
+     * Rejection-oriented storage helper that returns the updated operational result.
+     */
+    public FileHandlingResult saveInDiskOverridingExisting(Path basePath, FileContext fileContext) {
+        Path storedPath = saveInDiskOverridingExisting(basePath, fileContext.validationContext().getFile());
+        if (storedPath == null) {
+            return FileHandlingResult.initial(fileContext.withStatus(FileStatus.NOT_STORED));
         }
-        Files.createDirectories(storagePath.getParent());
+        return FileHandlingResult.initial(fileContext.withStoredPath(storedPath)).withStoredInDisk();
+    }
 
-        // Calcular hash opcionalmente
-        String fileHash = this.hashUtils.computeHashIfEnabled(file);
+    /**
+     * Stores a MultipartFile in a base path with path traversal protection.
+     * The originalFilename is inferred from {@link MultipartFile#getOriginalFilename()}.
+     *
+     * @param overrideExisting if {@code true} overwrites any existing file with the same name;
+     *                         if {@code false} appends a numeric suffix, e.g. {@code originalFilename(01).xml}
+     * @return stored path, or {@code null} if storage fails
+     */
+    public Path saveInDiskOverridingExisting(Path basePath, MultipartFile file, boolean overrideExisting) {
+        try {
+            Path normalizedBasePath = basePath.toAbsolutePath().normalize();
+            String safeFilename = sanitizeFilename(resolveFilename(file));
+            Path storagePath = normalizedBasePath.resolve(safeFilename).normalize();
 
-        // Chequear duplicado en base de datos por nombre o hash
-        Optional<FileRecord> exisingFileRecord = this.fileRecordService.findFirstByFilenameOrHash(originalFilename, fileHash);
-        if (exisingFileRecord.isPresent()) {
-            log.warn("Archivo ya registrado en base de datos: {}", originalFilename);
-
-            // Generar nombre único para duplicado
-            String newFilename = this.resolveDuplicateName(originalFilename);
-            String subFolder = FilenameUtils.getExtension(storagePath.getFileName().toString()) + "/";
-            Path duplicatesBasePath = Path.of(this.fileUploadProperties.duplicatesPath(), subFolder)
-                    .toAbsolutePath()
-                    .normalize();
-            Files.createDirectories(duplicatesBasePath);
-
-            // Guardar archivo duplicado
-            Path duplicatePath = duplicatesBasePath.resolve(newFilename).normalize();
-            if (!duplicatePath.startsWith(duplicatesBasePath)) {
-                throw new IOException("Invalid duplicate file path after sanitization");
+            if (!storagePath.startsWith(normalizedBasePath)) {
+                throw new IOException("Invalid file path after sanitization");
             }
-            Files.write(duplicatePath, file.getBytes());
-            log.info("Archivo duplicado guardado como: {}", duplicatePath.toAbsolutePath());
 
-            fileRecordService.save(
-                    this.buidDuplicateFileRecord(
-                            exisingFileRecord.get(),
-                            basePath.resolve(newFilename).toString(),
-                            newFilename,
-                            duplicatePath.toAbsolutePath().toString()
-                    )
-            );
+            if (!overrideExisting && Files.exists(storagePath)) {
+                storagePath = resolveNonConflictingPath(normalizedBasePath, safeFilename);
+            }
 
-            // Retornar null para indicar que no se debe procesar
+            Files.createDirectories(storagePath.getParent());
+            Files.write(storagePath, file.getBytes());
+            return storagePath;
+        } catch (IOException e) {
+            log.error("Could not store file '{}' in disk path '{}': {}",
+                    file != null ? file.getOriginalFilename() : null,
+                    basePath,
+                    e.getMessage(),
+                    e);
             return null;
         }
+    }
 
-        // Si no hay duplicado, guardar normalmente
+    /**
+     * Deletes a file if it exists. Returns true when the cleanup completed without I/O errors.
+     */
+    public boolean deleteIfExists(Path path) {
+        if (path == null) {
+            return true;
+        }
 
-        log.info("File {} stored at: {}", originalFilename, storagePath.toAbsolutePath());
+        try {
+            Files.deleteIfExists(path);
+            return true;
+        } catch (IOException e) {
+            log.error("Could not delete file '{}' during rollback: {}", path, e.getMessage(), e);
+            return false;
+        }
+    }
 
-        Files.write(storagePath, file.getBytes());
-        return FileRecord.builder()
-                //.finalPath(storagePath.toAbsolutePath().toString())
-                .finalPath(storagePath.toString())
-                .hash(fileHash)
-                .build();
+    private Path resolveNonConflictingPath(Path basePath, String safeFilename) {
+        String baseName = FilenameUtils.getBaseName(safeFilename);
+        String extension = FilenameUtils.getExtension(safeFilename);
+        String extensionSuffix = extension.isBlank() ? "" : "." + extension;
+
+        int counter = 1;
+        Path candidate;
+        do {
+            String numberedName = String.format("%s(%02d)%s", baseName, counter, extensionSuffix);
+            candidate = basePath.resolve(numberedName).normalize();
+            counter++;
+        } while (Files.exists(candidate));
+
+        return candidate;
+    }
+
+    private String resolveFilename(MultipartFile file) {
+        String original = file != null ? file.getOriginalFilename() : null;
+        return (original == null || original.isBlank()) ? DEFAULT_FILENAME : original;
     }
 
     private String sanitizeFilename(String filename) {
@@ -173,27 +194,6 @@ public final class FileStorageUtil {
         return extension.isBlank() ? truncatedBase : truncatedBase + "." + extension;
     }
 
-    public String resolveDuplicateName(String originalFilename) {
-        String baseName = FilenameUtils.getBaseName(originalFilename);
-        String extension = FilenameUtils.getExtension(originalFilename);
-
-        // Obtener todos los filenames que empiezan con el mismo baseName
-        List<String> similarNames = this.fileRecordService.findAllFilenamesLike(baseName + "%");
-
-        int maxCounter = 0;
-        for (String name : similarNames) {
-            // Extraer número si tiene formato archivo(n).ext
-            if (name.matches(Pattern.quote(baseName) + "\\(\\d+\\)\\." + Pattern.quote(extension))) {
-                int num = Integer.parseInt(name.replaceAll(".*\\((\\d+)\\)\\..*", "$1"));
-                if (num > maxCounter) maxCounter = num;
-            }
-        }
-
-        // Generar nuevo nombre con contador siguiente
-        int nextCounter = maxCounter + 1;
-        return baseName + "(" + nextCounter + ")." + extension;
-    }
-
     private Path moveFile(File file, String destinationDir, String label) {
         try {
             //Debemos definir un subtipo de carpeta para los tipos de medida
@@ -216,21 +216,49 @@ public final class FileStorageUtil {
         };
     }
 
-    private FileRecord buidDuplicateFileRecord(FileRecord exisingFileRecord, String originPath, String newFilename, String duplicatePath) {
-        String comment = exisingFileRecord.getComment() == null ?
-                null : exisingFileRecord.getComment() + " (duplicado)";
-        return exisingFileRecord.toBuilder()
-                .id(null)
-                .filename(newFilename)
-                .finalPath(duplicatePath)
-                .comment(comment)
-                .status(FileStatus.DUPLICATED)
-                .failureReason(FailureReason.DUPLICATED_FILE)
-                .uploadedAt(LocalDateTime.now())
-                .processedAt(LocalDateTime.now())
-                .failedAt(LocalDateTime.now())
-                .lastAttemptAt(LocalDateTime.now())
-                .build();
+
+    /**
+     * Stores a {@link MultipartFile} using its {@code hash} as the storage artifact name,
+     * without extension. If a file with that hash already exists on disk, the write is skipped
+     * and the existing path is returned unchanged.
+     * Returns empty when storing fails.
+     */
+    public Optional<Path> saveInDiskWithHash(Path basePath, ValidationContext validationContext) {
+        try {
+            Path normalizedBase = basePath.toAbsolutePath().normalize();
+            Files.createDirectories(normalizedBase);
+
+            String artifactName = validationContext.getOrComputeHash();
+            MultipartFile file = validationContext.getFile();
+
+            Path target = normalizedBase.resolve(artifactName).normalize();
+            if (!target.startsWith(normalizedBase)) {
+                throw new IOException("Path traversal detected for hash: " + artifactName);
+            }
+
+            if (Files.exists(target)) {
+                log.info("file_storage=REUSED hash={} path={}", artifactName, target);
+                return Optional.of(target);
+            }
+
+            Files.write(target, file.getBytes());
+            log.info("file_storage=WRITTEN hash={} path={}", artifactName, target);
+            return Optional.of(target);
+        } catch (IOException e) {
+            log.error("Could not store file with hash '{}' in '{}': {}", validationContext.getOrComputeHash(), basePath, e.getMessage(), e);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Returns {@code true} when the hash artifact already exists in disk.
+     */
+    public boolean existsByHash(Path basePath, String hash) {
+        if (hash == null || hash.isBlank()) {
+            return false;
+        }
+        Path normalizedBase = basePath.toAbsolutePath().normalize();
+        return Files.exists(normalizedBase.resolve(hash));
     }
 
     /**
