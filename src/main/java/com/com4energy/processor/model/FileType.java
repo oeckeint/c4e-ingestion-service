@@ -5,6 +5,7 @@ public enum FileType {
     MEDIDA_QH_P5,
     MEDIDA_QH_P1,
     MEDIDA_QH_P2,
+    AWAITING_CLASSIFICATION,
     H_MEASURE,
     FACTURA,
     OTRA_FACTURA,

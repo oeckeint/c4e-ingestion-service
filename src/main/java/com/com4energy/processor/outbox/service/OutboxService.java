@@ -36,7 +36,7 @@ public class OutboxService {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public FileHandlingResult saveDuplicated(FileHandlingResult currentResult, InternalServices internalService) {
+    public FileHandlingResult saveDuplicated(FileHandlingResult currentResult, InternalServices internalService, FileOrigin origin) {
         if (!currentResult.storedInDisk() || !currentResult.fileContext().isDuplicated()) {
             return currentResult;
         }
@@ -48,6 +48,7 @@ public class OutboxService {
         payload.put("eventType", OutboxEventType.FILE_ALREADY_EXISTS.name());
         payload.put("filename", fileContext.validationContext().getOriginalFilename());
         payload.put("status", fileContext.fileStatus().name());
+        payload.put("origin", origin.name());
         payload.put("reason", fileContext.getPrimaryFailureReason().name());
         payload.put("reasonDescription", fileContext.getPrimaryFailureReason().getDescription());
         payload.put("createdBy", internalService);
@@ -71,9 +72,8 @@ public class OutboxService {
         return currentResult.withPersistedInOutboxEvent();
     }
 
-
     @Transactional
-    public FileHandlingResult saveRejected(FileHandlingResult currentResult, InternalServices internalService) {
+    public FileHandlingResult saveRejected(FileHandlingResult currentResult, InternalServices internalService, FileOrigin origin) {
         if (!currentResult.storedInDisk()) {
             return currentResult;
         }
@@ -87,7 +87,7 @@ public class OutboxService {
         FileRecord rejectedRecord = FileRecord.builder()
                 .originalFilename(fileContext.validationContext().getOriginalFilename())
                 .extension(FilenameUtils.getExtension(fileContext.validationContext().getOriginalFilename()))
-                .origin(FileOrigin.API)
+                .origin(origin)
                 .finalPath(fileContext.findStoredFilePath().orElse(null))
                 .hash(fileContext.validationContext().getOrComputeHash())
                 .status(FileStatus.REJECTED)

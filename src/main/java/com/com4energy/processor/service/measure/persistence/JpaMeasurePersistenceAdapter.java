@@ -1,0 +1,377 @@
+package com.com4energy.processor.service.measure.persistence;
+
+import com.com4energy.processor.model.ClienteEntity;
+import com.com4energy.processor.model.measure.MedidaCCHEntity;
+import com.com4energy.processor.model.measure.MedidaHEntity;
+import com.com4energy.processor.model.measure.MedidaLegacyEntity;
+import com.com4energy.processor.model.measure.MedidaQHEntity;
+import com.com4energy.processor.repository.ClienteRepository;
+import com.com4energy.processor.repository.measure.MedidaCCHRepository;
+import com.com4energy.processor.repository.measure.MedidaHRepository;
+import com.com4energy.processor.repository.measure.MedidaLegacyRepository;
+import com.com4energy.processor.repository.measure.MedidaQHRepository;
+import com.com4energy.processor.service.measure.MeasureRecord;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts.MeasurePersistencePort {
+
+    private static final String SYSTEM_USER = "SYSTEM";
+    private static final int DEFAULT_BATCH_SIZE = 1000;
+    private static final int MIN_BATCH_SIZE = 1; // Para binary split recursivo
+
+    private final MedidaHRepository medidaHRepository;
+    private final MedidaQHRepository medidaQHRepository;
+    private final MedidaLegacyRepository medidaLegacyRepository;
+    private final MedidaCCHRepository medidaCCHRepository;
+    private final ClienteRepository clienteRepository;
+
+    // Contexto para tracking durante binary split
+    private final ThreadLocal<BatchSplitContext> batchContext = ThreadLocal.withInitial(BatchSplitContext::new);
+
+    @Override
+    @Transactional
+    public MeasurePersistenceContracts.MeasurePersistenceResult persist(
+            MeasurePersistenceContracts.PersistMeasuresCommand command
+    ) {
+        List<String> errors = new ArrayList<>();
+        Map<String, ClienteResolution> clientCache = new HashMap<>();
+
+        List<MedidaHEntity> p1Batch = new ArrayList<>();
+        List<MedidaQHEntity> p2Batch = new ArrayList<>();
+        List<MedidaLegacyEntity> f5Batch = new ArrayList<>();
+        List<MedidaCCHEntity> p5Batch = new ArrayList<>();
+
+        int skipped = 0;
+        int persisted = 0;
+
+        for (MeasureRecord measureRecord : command.measureRecords()) {
+            ClienteResolution resolution = resolveClient(measureRecord.cups(), clientCache);
+            if (!resolution.valid()) {
+                errors.add(resolution.errorMessage());
+                continue;
+            }
+
+            if (measureRecord instanceof MeasureRecord.Legacy && is20TdTariff(resolution.tarifa())) {
+                skipped++;
+                continue;
+            }
+
+            if (measureRecord instanceof MeasureRecord.Hourly hourly) {
+                p1Batch.add(toMedidaH(hourly, resolution.clientId()));
+            } else if (measureRecord instanceof MeasureRecord.QuarterHourly quarterHourly) {
+                p2Batch.add(toMedidaQH(quarterHourly, resolution.clientId()));
+            } else if (measureRecord instanceof MeasureRecord.Legacy legacy) {
+                f5Batch.add(toMedidaLegacy(legacy, resolution.clientId()));
+            } else if (measureRecord instanceof MeasureRecord.Cch cch) {
+                p5Batch.add(toMedidaCch(cch, resolution.clientId()));
+            }
+
+            // Persist in batches to optimize performance while maintaining transactional integrity
+            if (p1Batch.size() + p2Batch.size() + f5Batch.size() + p5Batch.size() >= DEFAULT_BATCH_SIZE) {
+                persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
+            }
+        }
+
+        // Flush any remaining records
+        persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
+
+        return new MeasurePersistenceContracts.MeasurePersistenceResult(persisted, errors.size(), skipped, errors);
+    }
+
+    /**
+     * Persiste los lotes acumulados con binary split en caso de error.
+     * Si saveAll falla, divide recursivamente el lote hasta aislar registros malos.
+     * Acumula los registros que fallan en el contexto de batch.
+     *
+     * @return número de registros persistidos
+     */
+    private int flushBatches(
+            List<MedidaHEntity> p1Batch,
+            List<MedidaQHEntity> p2Batch,
+            List<MedidaLegacyEntity> f5Batch,
+            List<MedidaCCHEntity> p5Batch
+    ) {
+        int persistedCount = 0;
+
+        if (!p1Batch.isEmpty()) {
+            persistedCount += flushWithBinarySplit(p1Batch, medidaHRepository, EntityType.P1);
+            p1Batch.clear();
+        }
+        if (!p2Batch.isEmpty()) {
+            persistedCount += flushWithBinarySplit(p2Batch, medidaQHRepository, EntityType.P2);
+            p2Batch.clear();
+        }
+        if (!f5Batch.isEmpty()) {
+            persistedCount += flushWithBinarySplit(f5Batch, medidaLegacyRepository, EntityType.F5);
+            f5Batch.clear();
+        }
+        if (!p5Batch.isEmpty()) {
+            persistedCount += flushWithBinarySplit(p5Batch, medidaCCHRepository, EntityType.P5);
+            p5Batch.clear();
+        }
+
+        return persistedCount;
+    }
+
+    /**
+     * Flush con binary split: intenta persistir lote.
+     * Si falla, divide recursivamente hasta aislar el registro problemático.
+     */
+    private <T> int flushWithBinarySplit(
+            List<T> batch,
+            org.springframework.data.jpa.repository.JpaRepository<T, ?> repository,
+            EntityType entityType
+    ) {
+        if (batch.isEmpty()) {
+            return 0;
+        }
+
+        try {
+            repository.saveAll(new ArrayList<>(batch));
+            return batch.size();
+        } catch (Exception e) {
+            log.warn(
+                    "Batch flush failed for {} records of type {}. Attempting binary split. Error: {}",
+                    batch.size(),
+                    entityType,
+                    e.getMessage()
+            );
+            return binarySplitAndPersist(batch, repository, entityType, e.getMessage());
+        }
+    }
+
+    /**
+     * Binary split recursivo: divide lote por mitad y reintenta.
+     * Acumula registros que fallan en el contexto para cuarentena.
+     */
+    private <T> int binarySplitAndPersist(
+            List<T> batch,
+            org.springframework.data.jpa.repository.JpaRepository<T, ?> repository,
+            EntityType entityType,
+            String errorMessage
+    ) {
+        if (batch.isEmpty()) {
+            return 0;
+        }
+
+        if (batch.size() == 1) {
+            // Base case: 1 registro = es el malo
+            logFailedRecord(batch.get(0), entityType, errorMessage);
+            batchContext.get().addFailedEntity(batch.get(0), entityType);
+            return 0;
+        }
+
+        int mid = batch.size() / 2;
+        List<T> first = new ArrayList<>(batch.subList(0, mid));
+        List<T> second = new ArrayList<>(batch.subList(mid, batch.size()));
+
+        int persistedCount = 0;
+
+        // Reintenta primera mitad
+        try {
+            repository.saveAll(first);
+            persistedCount += first.size();
+            log.debug("First half ({} records) persisted successfully", first.size());
+        } catch (Exception e) {
+            log.debug("First half failed, recursing with {} records", first.size());
+            persistedCount += binarySplitAndPersist(first, repository, entityType, e.getMessage());
+        }
+
+        // Reintenta segunda mitad
+        try {
+            repository.saveAll(second);
+            persistedCount += second.size();
+            log.debug("Second half ({} records) persisted successfully", second.size());
+        } catch (Exception e) {
+            log.debug("Second half failed, recursing with {} records", second.size());
+            persistedCount += binarySplitAndPersist(second, repository, entityType, e.getMessage());
+        }
+
+        return persistedCount;
+    }
+
+    private void logFailedRecord(Object entity, EntityType entityType, String errorMessage) {
+        log.warn(
+                "Failed to persist record of type {}. Error: {}",
+                entityType,
+                errorMessage
+        );
+    }
+
+    enum EntityType {
+        P1, P2, F5, P5
+    }
+
+    /**
+     * Contexto para tracking de registros fallidos durante binary split.
+     */
+    static class BatchSplitContext {
+        private final List<Object> failedEntities = new ArrayList<>();
+        private final Map<Object, EntityType> entityTypes = new HashMap<>();
+
+        void addFailedEntity(Object entity, EntityType type) {
+            failedEntities.add(entity);
+            entityTypes.put(entity, type);
+        }
+
+        List<Object> getFailedEntities() {
+            return new ArrayList<>(failedEntities);
+        }
+
+        void reset() {
+            failedEntities.clear();
+            entityTypes.clear();
+        }
+    }
+
+    private ClienteResolution resolveClient(String cups, Map<String, ClienteResolution> clientCache) {
+        if (cups == null || cups.isBlank()) {
+            return ClienteResolution.error("No se puede resolver el cliente porque el CUPS está vacío");
+        }
+
+        return clientCache.computeIfAbsent(cups, key -> {
+            List<ClienteEntity> matches = clienteRepository.findByCups(key);
+            if (matches.isEmpty()) {
+                return ClienteResolution.error("No se encontró cliente para CUPS " + key);
+            }
+            if (matches.size() > 1) {
+                return ClienteResolution.error("Se encontró más de un cliente para CUPS " + key);
+            }
+
+            ClienteEntity client = matches.get(0);
+            if (client.getId() == null) {
+                return ClienteResolution.error("El cliente para CUPS " + key + " no tiene id_cliente");
+            }
+            return ClienteResolution.success(client.getId(), client.getTarifa());
+        });
+    }
+
+    private boolean is20TdTariff(String tarifa) {
+        return tarifa != null && "20TD".equalsIgnoreCase(tarifa.trim());
+    }
+
+    private MedidaHEntity toMedidaH(MeasureRecord.Hourly measure, Long clientId) {
+        LocalDateTime now = LocalDateTime.now();
+        return MedidaHEntity.builder()
+                .clienteId(clientId)
+                .tipoMedida(measure.tipoMedida())
+                .fecha(measure.timestamp())
+                .banderaInvVer((double) measure.banderaInvVer())
+                .actent((double) measure.actent())
+                .qactent((double) measure.qactent())
+                .actsal((double) measure.actsal())
+                .qactsal((double) measure.qactsal())
+                .rq1((double) measure.rQ1())
+                .qrq1((double) measure.qrQ1())
+                .rq2((double) measure.rQ2())
+                .qrq2((double) measure.qrQ2())
+                .rq3((double) measure.rQ3())
+                .qrq3((double) measure.qrQ3())
+                .rq4((double) measure.rQ4())
+                .qrq4((double) measure.qrQ4())
+                .medres1((double) measure.medres1())
+                .qmedres1((double) measure.qmedres1())
+                .medres2((double) measure.medres2())
+                .qmedres2((double) measure.qmedres2())
+                .metodObt(measure.metodObt())
+                .temporal(measure.temporal())
+                .origen(measure.origen())
+                .createdOn(now)
+                .createdBy(SYSTEM_USER)
+                .build();
+    }
+
+    private MedidaQHEntity toMedidaQH(MeasureRecord.QuarterHourly measure, Long clientId) {
+        LocalDateTime now = LocalDateTime.now();
+        return MedidaQHEntity.builder()
+                .clienteId(clientId)
+                .tipoMed(measure.tipoMedida())
+                .fecha(measure.timestamp())
+                .banderaInvVer(measure.banderaInvVer())
+                .actent(measure.actent())
+                .qactent(measure.qactent())
+                .actsal(measure.actsal())
+                .qactsal(measure.qactsal())
+                .rq1(measure.rQ1())
+                .qrq1(measure.qrQ1())
+                .rq2(measure.rQ2())
+                .qrq2(measure.qrQ2())
+                .rq3(measure.rQ3())
+                .qrq3(measure.qrQ3())
+                .rq4(measure.rQ4())
+                .qrq4(measure.qrQ4())
+                .medres1(measure.medres1())
+                .qmedres1(measure.qmedres1())
+                .medres2(measure.medres2())
+                .qmedres2(measure.qmedres2())
+                .metodObt(measure.metodObt())
+                .temporal(measure.temporal())
+                .origen(measure.origen())
+                .createdOn(now)
+                .createdBy(SYSTEM_USER)
+                .build();
+    }
+
+    private MedidaLegacyEntity toMedidaLegacy(MeasureRecord.Legacy measure, Long clientId) {
+        LocalDateTime now = LocalDateTime.now();
+        return MedidaLegacyEntity.builder()
+                .clienteId(clientId)
+                .fecha(measure.timestamp())
+                .banderaInvVer(measure.banderaInvVer())
+                .ae1(measure.ae1())
+                .as1(measure.as1())
+                .rq1(measure.rq1())
+                .rq2(measure.rq2())
+                .rq3(measure.rq3())
+                .rq4(measure.rq4())
+                .metodObt(measure.metodObt())
+                .indicFirmez(measure.indicFirmez())
+                .codigoFactura(measure.codigoFactura())
+                .createdOn(now)
+                .createdBy(SYSTEM_USER)
+                .build();
+    }
+
+    private MedidaCCHEntity toMedidaCch(MeasureRecord.Cch measure, Long clientId) {
+        LocalDateTime now = LocalDateTime.now();
+        return MedidaCCHEntity.builder()
+                .clienteId(clientId)
+                .fecha(measure.timestamp())
+                .banderaInvVer(measure.banderaInvVer())
+                .actent(measure.actent())
+                .metod(measure.metod())
+                .createdOn(now)
+                .createdBy(SYSTEM_USER)
+                .build();
+    }
+
+    private record ClienteResolution(Long clientId, String tarifa, String errorMessage) {
+
+        static ClienteResolution success(Long clientId, String tarifa) {
+            return new ClienteResolution(clientId, tarifa, null);
+        }
+
+        static ClienteResolution error(String message) {
+            return new ClienteResolution(null, null, message);
+        }
+
+        boolean valid() {
+            return clientId != null && (errorMessage == null || errorMessage.isBlank());
+        }
+    }
+}
+
+
+

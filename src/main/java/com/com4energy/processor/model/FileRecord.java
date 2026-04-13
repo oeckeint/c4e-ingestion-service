@@ -1,6 +1,7 @@
 package com.com4energy.processor.model;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.Optional;
 
 import com.com4energy.processor.service.dto.FileContext;
@@ -11,6 +12,7 @@ import org.apache.commons.io.FilenameUtils;
 @Entity
 @Table(name = "file_records")
 @Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -34,9 +36,26 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
     private FileStatus status;
 
     @Enumerated(EnumType.STRING)
+    private QualityStatus qualityStatus;
+
+    @Enumerated(EnumType.STRING)
+    private BusinessResult businessResult;
+
+    @Enumerated(EnumType.STRING)
     private FileOrigin origin;
 
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private Boolean locked;
+
+    private String lockedBy;
+
+    private LocalDateTime lockedAt;
+
     private Integer retryCount;
+    private Integer processedRecords;
+    private Integer defectedRecords;
+    private Long parseDurationMs;
+    private Long processingDurationMs;
     private String hash;
 
     @Enumerated(EnumType.STRING)
@@ -53,6 +72,10 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
     }
 
     public static FileRecord from(FileContext fileContext) {
+        return from(fileContext, FileOrigin.API);
+    }
+
+    public static FileRecord from(FileContext fileContext, FileOrigin origin) {
         String finalFilename = Optional.of(fileContext.findStoredFilePath().orElse(""))
                 .map(FilenameUtils::getName)
                 .filter(name -> !name.isBlank())
@@ -66,10 +89,50 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
                 .originalFilename(fileContext.validationContext().getOriginalFilename())
                 .finalFilename(finalFilename)
                 .finalPath(fileContext.findStoredFilePath().orElse(null))
+                .type(determineInitialType(fileContext.validationContext().getOriginalFilename()))
                 .hash(fileContext.validationContext().getOrComputeHash())
-                .origin(FileOrigin.API)
+                .origin(origin)
+                .qualityStatus(QualityStatus.NOT_EVALUATED)
+                .businessResult(BusinessResult.NOT_PROCESSED)
                 .retryCount(0)
                 .build();
+    }
+
+    private static FileType determineInitialType(String originalFilename) {
+        String extension = Optional.ofNullable(FilenameUtils.getExtension(originalFilename))
+                .map(ext -> ext.toLowerCase(Locale.ROOT))
+                .orElse("");
+
+        if ("xml".equals(extension)) {
+            return FileType.AWAITING_CLASSIFICATION;
+        }
+
+        if (extension.length() == 1 && Character.isDigit(extension.charAt(0))) {
+            return resolveMeasureTypeFromFilename(originalFilename);
+        }
+
+        return FileType.UNKNOWN;
+    }
+
+    private static FileType resolveMeasureTypeFromFilename(String originalFilename) {
+        if (originalFilename == null || originalFilename.isBlank()) {
+            return FileType.UNKNOWN;
+        }
+
+        String baseName = FilenameUtils.getBaseName(originalFilename);
+        String[] tokens = baseName.split("_");
+        if (tokens.length == 0 || tokens[0].length() < 2) {
+            return FileType.UNKNOWN;
+        }
+
+        String prefix = tokens[0].substring(0, 2).toLowerCase(Locale.ROOT);
+        return switch (prefix) {
+            case "p1" -> FileType.MEDIDA_QH_P1;
+            case "p2" -> FileType.MEDIDA_QH_P2;
+            case "f5" -> FileType.MEDIDA_QH_F5;
+            case "p5" -> FileType.MEDIDA_QH_P5;
+            default -> FileType.UNKNOWN;
+        };
     }
 
     public void markAsFailed() {
@@ -86,6 +149,11 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
 
     public void markAsNew() {
         this.status = FileStatus.NEW;
+        this.uploadedAt = LocalDateTime.now();
+    }
+
+    public void markAsPending() {
+        this.status = FileStatus.PENDING;
         this.uploadedAt = LocalDateTime.now();
     }
 

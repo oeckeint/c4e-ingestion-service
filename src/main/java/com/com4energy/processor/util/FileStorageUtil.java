@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.Optional;
 
 import com.com4energy.processor.model.FileStatus;
@@ -31,6 +30,10 @@ public final class FileStorageUtil {
     private final FileUploadProperties fileUploadProperties;
 
     public Path moveFileFromAutomaticToProcessing(File file) {
+        return moveFileToProcessing(file);
+    }
+
+    public Path moveFileToProcessing(File file) {
         return moveFile(file, fileUploadProperties.processingPath() + "/" + defineSubFolder(file), "processing");
     }
 
@@ -48,6 +51,10 @@ public final class FileStorageUtil {
 
     public Path moveFileToFailed(File file) {
         return moveFile(file, fileUploadProperties.failedPath(), "failed");
+    }
+
+    public Path moveFileToRejected(File file) {
+        return moveFile(file, fileUploadProperties.rejectedPath(), "rejected");
     }
 
     /**
@@ -197,10 +204,17 @@ public final class FileStorageUtil {
     private Path moveFile(File file, String destinationDir, String label) {
         try {
             //Debemos definir un subtipo de carpeta para los tipos de medida
-            Files.createDirectories(Paths.get(destinationDir));
-            Path destinationPath = Paths.get(destinationDir, file.getName());
-            log.info("Moving file to {}: {}", label, destinationPath.toAbsolutePath());
-            return Files.move(file.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+            Path destinationRoot = Paths.get(destinationDir).toAbsolutePath().normalize();
+            Files.createDirectories(destinationRoot);
+            Path destinationPath = destinationRoot.resolve(sanitizeFilename(file.getName())).normalize();
+            if (!destinationPath.startsWith(destinationRoot)) {
+                throw new IOException("Invalid destination path after sanitization: " + file.getName());
+            }
+            if (Files.exists(destinationPath)) {
+                destinationPath = resolveNonConflictingPath(destinationRoot, destinationPath.getFileName().toString());
+            }
+            log.debug("Moving file to {}: {}", label, destinationPath.toAbsolutePath());
+            return Files.move(file.toPath(), destinationPath);
         } catch (IOException e) {
             log.error("Error moving file to {}: {}", label, e.getMessage());
             return null;

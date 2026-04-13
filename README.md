@@ -10,6 +10,20 @@ Verificado en local sobre el estado actual del repo:
 - `./mvnw verify` pasa (incluyendo checkstyle).
 - Hay cambios locales sin consolidar en `git status` (algunos parecen prototipos no conectados al flujo principal).
 
+## Documentacion recomendada
+
+- Vista cliente: `docs/CLIENT_IMPLEMENTATION_OVERVIEW.md`
+- Notas tecnicas internas: `docs/DEV_NOTES_INGESTION_IMPLEMENTATION.md`
+
+## Reporte de defectos de medidas
+
+Cuando un archivo de medidas falla por parseo/validacion/persistencia, se generan reportes en:
+
+- `failed/defects/<archivo_original>.sge_defect.jsonl`
+- `failed/defects/<archivo_original>.sge_defect.csv`
+
+El CSV esta orientado a lectura operativa/cliente y el JSONL a trazabilidad tecnica.
+
 ## Que funciona hoy
 
 - **Integracion de librerias compartidas**: usa `c4e-event-publisher` para publicar incidentes y `c4e-i18n-core` como base de i18n comun.

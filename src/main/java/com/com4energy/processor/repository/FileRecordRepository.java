@@ -2,7 +2,13 @@ package com.com4energy.processor.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
+import com.com4energy.processor.model.FileType;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -37,5 +43,52 @@ FileRecordRepository extends JpaRepository<FileRecord, Long> {
     List<FileRecord> findByStatus(FileStatus status);
 
     List<FileRecord> findByStatusIn(List<FileStatus> statuses);
+
+    List<FileRecord> findByLockedTrueAndLockedAtBefore(LocalDateTime threshold);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select f
+            from FileRecord f
+            where f.status in :statuses
+              and (f.locked = false or f.locked is null)
+              and f.type in :types
+            order by f.uploadedAt asc, f.id asc
+            """)
+    List<FileRecord> findCandidatesForProcessing(
+            @Param("statuses") List<FileStatus> statuses,
+            @Param("types") List<FileType> types,
+            Pageable pageable
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select f
+            from FileRecord f
+            where f.id = :id
+            """)
+    Optional<FileRecord> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select f
+            from FileRecord f
+            where f.id = :id
+              and f.locked = true
+              and f.lockedBy = :lockedBy
+            """)
+    Optional<FileRecord> findOwnedByIdForUpdate(@Param("id") Long id, @Param("lockedBy") String lockedBy);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update FileRecord f
+            set f.locked = false,
+                f.lockedBy = null,
+                f.lockedAt = null
+            where f.id = :id
+              and f.locked = true
+              and f.lockedBy = :lockedBy
+            """)
+    int releaseLockIfOwnedBy(@Param("id") Long id, @Param("lockedBy") String lockedBy);
 
 }

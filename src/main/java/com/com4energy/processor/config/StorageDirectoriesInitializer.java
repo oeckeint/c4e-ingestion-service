@@ -40,6 +40,7 @@ public class StorageDirectoriesInitializer implements ApplicationRunner {
                 ensureDirectory("scanner.paths[" + i + "]", scannerPaths.get(i));
             }
         }
+        ensureDirectory("scanner.lock-path", fileScannerProperties.getLockPath());
 
         log.info("Storage directories are ready under base path: {}", fileUploadProperties.basePath());
     }

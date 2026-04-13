@@ -50,8 +50,8 @@ public enum IngestionCommonMessageKey implements MessageKey {
     FAILURE_REASON_MAX_RETRIES_EXCEEDED("ingestion.failure.reason.max-retries-exceeded"),
     FAILURE_REASON_NULL_FILE("ingestion.failure.reason.null-file"),
     FAILURE_REASON_STORAGE_ERROR("ingestion.failure.reason.storage-error"),
-    FAILURE_REASON_UNKNOWN_ERROR("ingestion.failure.reason.unknown-error")
-    ;
+    FAILURE_REASON_UNKNOWN_ERROR("ingestion.failure.reason.unknown-error"),
+    FAILURE_REASON_STALE_LOCK("ingestion.failure.reason.stale-lock");
 
     private final String key;
 

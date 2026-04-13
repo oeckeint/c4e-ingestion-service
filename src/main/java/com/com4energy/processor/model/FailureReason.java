@@ -21,7 +21,8 @@ public enum FailureReason {
     MAX_RETRIES_EXCEEDED(IngestionCommonMessageKey.FAILURE_REASON_MAX_RETRIES_EXCEEDED),
     NULL_FILE(IngestionCommonMessageKey.FAILURE_REASON_NULL_FILE),
     STORAGE_ERROR(IngestionCommonMessageKey.FAILURE_REASON_STORAGE_ERROR),
-    UNKNOWN_ERROR(IngestionCommonMessageKey.FAILURE_REASON_UNKNOWN_ERROR);
+    UNKNOWN_ERROR(IngestionCommonMessageKey.FAILURE_REASON_UNKNOWN_ERROR),
+    STALE_LOCK(IngestionCommonMessageKey.FAILURE_REASON_STALE_LOCK);
 
     private final IngestionCommonMessageKey messageKey;
 

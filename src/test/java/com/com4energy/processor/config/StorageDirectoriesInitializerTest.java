@@ -25,6 +25,7 @@ class StorageDirectoriesInitializerTest {
 
         FileScannerProperties scanner = new FileScannerProperties();
         scanner.setPaths(List.of(tempDir.resolve("scanner/incoming").toString()));
+        scanner.setLockPath(tempDir.resolve("scanner/lock").toString());
 
         StorageDirectoriesInitializer initializer = new StorageDirectoriesInitializer(upload, scanner);
 
@@ -40,6 +41,7 @@ class StorageDirectoriesInitializerTest {
         assertTrue(Files.isDirectory(Path.of(upload.archivePath())));
         assertTrue(Files.isDirectory(Path.of(upload.automaticPath())));
         assertTrue(Files.isDirectory(Path.of(scanner.getPaths().get(0))));
+        assertTrue(Files.isDirectory(Path.of(scanner.getLockPath())));
     }
 
     private @NotNull FileUploadProperties getUploadProperties() {
@@ -78,6 +80,7 @@ class StorageDirectoriesInitializerTest {
 
         FileScannerProperties scanner = new FileScannerProperties();
         scanner.setPaths(List.of(tempDir.resolve("scanner/incoming").toString()));
+        scanner.setLockPath(tempDir.resolve("scanner/lock").toString());
 
         StorageDirectoriesInitializer initializer = new StorageDirectoriesInitializer(upload, scanner);
 
