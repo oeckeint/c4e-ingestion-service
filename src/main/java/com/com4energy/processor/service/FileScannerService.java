@@ -37,7 +37,7 @@ public class FileScannerService {
                             continue;
                         }
                         log.error("needs a new implementation for registering files as pending from job");
-                        //fileRecordService.registerFileAsPendingIntoDatababase(filename, file.toAbsolutePath().toString(), FileOrigin.JOB);
+                        //fileRecordService.registerFileAsPendingIntoDatababase(originalFilename, file.toAbsolutePath().toString(), FileOrigin.JOB);
                     }
                 }
             } catch (IOException e) {

@@ -2,9 +2,21 @@ package com.com4energy.processor.model;
 
 public enum FileStatus {
     DUPLICATED,
+    DUPLICATED_ORIGINAL_FILENAME,
+    DUPLICATED_CONTENT,
     FAILED,
+    CRITICAL_VALIDATION_FAILED,
+    REJECTED,
     PENDING,
+    UPLOADED,
+    ALREADY_EXISTS,
+    CORRUPTED,
     PROCESSING,
-    PROCESSED,
-    RETRYING
+    SUCCEEDED,
+    RETRY,
+    NEW,
+    DELETED,
+    VALID,
+    VALIDATION_FAILED,
+    NOT_STORED
 }

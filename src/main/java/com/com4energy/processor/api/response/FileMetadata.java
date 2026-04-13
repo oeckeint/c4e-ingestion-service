@@ -1,3 +1,10 @@
 package com.com4energy.processor.api.response;
 
-public record FileMetadata(String filename, String path) {}
+import com.com4energy.processor.model.FileStatus;
+import lombok.Builder;
+
+@Builder
+public record FileMetadata(
+        String originalFilename,
+        FileStatus status,
+        String hash) {}

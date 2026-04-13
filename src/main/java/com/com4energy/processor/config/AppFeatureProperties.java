@@ -16,7 +16,7 @@ public class AppFeatureProperties {
 
     private Map<String, Boolean> enabled = new HashMap<>();
 
-    public Boolean isEnabled(String key) {
+    public boolean isEnabled(String key) {
         return enabled.getOrDefault(key, false);
     }
 

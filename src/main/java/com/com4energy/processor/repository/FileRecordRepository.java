@@ -11,24 +11,26 @@ import com.com4energy.processor.model.FileStatus;
 
 /**
  * Repository interface for managing FileRecord entities.
- * Provides methods to find FileRecords by filename and path, and by status.
+ * Provides methods to find FileRecords by originalFilename and path, and by status.
  */
 @Repository
 public interface
 FileRecordRepository extends JpaRepository<FileRecord, Long> {
 
-    boolean existsByFilenameAndOriginPath(String filename, String originPath);
+    boolean existsByOriginalFilenameAndFinalPath(String originalFilename, String finalPath);
 
-    boolean existsFileRecordByFilename(String filename);
+    boolean existsByHash(String hash);
 
-    Optional<FileRecord> findFirstByFilenameOrHash(String originalFilename, String fileHash);
+    boolean existsByOriginalFilename(String originalFilename);
 
-    @Query("SELECT f.filename FROM FileRecord f WHERE f.filename LIKE :pattern")
-    List<String> findAllFilenamesLike(@Param("pattern") String pattern);
+    Optional<FileRecord> findFirstByOriginalFilename(String originalFilename);
 
-    Optional<FileRecord> findByFilenameAndOriginPath(String filename, String originPath);
+    @Query("SELECT f.originalFilename FROM FileRecord f WHERE f.originalFilename LIKE :pattern")
+    List<String> findAllOriginalFilenamesLike(@Param("pattern") String pattern);
 
-    Optional<FileRecord> findByFilenameAndOriginPathOrHash(String filename, String originPath, String fileHash);
+    Optional<FileRecord> findByOriginalFilenameAndFinalPath(String originalFilename, String finalPath);
+
+    Optional<FileRecord> findByOriginalFilenameAndFinalPathOrHash(String originalFilename, String finalPath, String fileHash);
 
     Optional<FileRecord> findByHash(String hash);
 

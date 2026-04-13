@@ -28,6 +28,7 @@
 	</scm>
 	<properties>
 		<java.version>17</java.version>
+		<c4e.shared.libs.version>0.1.0-SNAPSHOT</c4e.shared.libs.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -86,6 +87,16 @@
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
 			<version>3.18.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.com4energy</groupId>
+			<artifactId>c4e-i18n-core</artifactId>
+			<version>${c4e.shared.libs.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.com4energy</groupId>
+			<artifactId>c4e-event-publisher</artifactId>
+			<version>${c4e.shared.libs.version}</version>
 		</dependency>
         <dependency>
             <groupId>org.jetbrains</groupId>
