@@ -29,4 +29,12 @@ public class FeatureFlagService {
         return isEnabled("scanner-lock-maintenance-job");
     }
 
+    public boolean isFileProcessingPendingJob() {
+        return isEnabled("file-processing-job");
+    }
+
+    public boolean isFileProcessingRetryJob() {
+        return isEnabled("file-retry-job");
+    }
+
 }

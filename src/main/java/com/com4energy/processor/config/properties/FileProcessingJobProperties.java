@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "file.processing")
 public class FileProcessingJobProperties {
 
-    private long intervalMs = 30_000;
+    private long intervalMs = 3_000;
     private int batchSize = 10;
 
 }

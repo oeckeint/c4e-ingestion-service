@@ -9,7 +9,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 
-import com.com4energy.processor.config.FeatureFlagService;
+import com.com4energy.i18n.core.Messages;
+import com.com4energy.processor.common.LogsCommonMessageKey;
+import com.com4energy.processor.exception.FileScannerException;
 import com.com4energy.processor.model.FileOrigin;
 import com.com4energy.processor.service.dto.FileBatchResult;
 import com.com4energy.processor.service.dto.PathMultipartFile;
@@ -25,51 +27,56 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class FileScannerService {
 
-    private final FeatureFlagService featureFlagService;
     private final FileUploadOrchestratorService fileUploadOrchestratorService;
     private final FileStorageUtil fileStorageUtil;
     private final FileScannerProperties fileScannerProperties;
 
+    private enum FileProcessResult {
+        PROCESSED, SKIPPED
+    }
+
     public void scanAndRegisterFiles() {
-        if (featureFlagService.isPersistenceEnabled()) {
-            log.info("Persist records disabled by feature flag. Skipping scanner run");
-            return;
-        }
-
         Path lockDirectory = Paths.get(fileScannerProperties.getLockPath());
-        ensureLockDirectoryExists(lockDirectory);
+        try {
+            Files.createDirectories(lockDirectory);
 
-        for (String pathStr : fileScannerProperties.getPaths()) {
-            Path path = Paths.get(pathStr);
-            if (Files.exists(path) && Files.isDirectory(path)) {
-                long filesFound = 0;
-                try (DirectoryStream<Path> filesFromFolder = Files.newDirectoryStream(path)) {
-                    for (Path file : filesFromFolder) {
-                        if (Files.isRegularFile(file)) {
-                            filesFound++;
-                            Path lockedFile = claimFile(file, lockDirectory);
-                            if (lockedFile == null) {
-                                continue;
+            for (String pathStr : fileScannerProperties.getPaths()) {
+                Path path = Paths.get(pathStr);
+                if (Files.exists(path) && Files.isDirectory(path)) {
+                    long filesFound = 0;
+                    try (DirectoryStream<Path> filesFromFolder = Files.newDirectoryStream(path)) {
+                        for (Path file : filesFromFolder) {
+                            if (processFileFromFolder(file, lockDirectory) == FileProcessResult.PROCESSED) {
+                                filesFound++;
                             }
-                            processClaimedFile(lockedFile);
+                        }
+                        if (filesFound > 0) {
+                            log.info(Messages.format(LogsCommonMessageKey.FILE_FOUND, filesFound, pathStr));
                         }
                     }
-                    if (filesFound > 0) {
-                        log.info("{} files found in {}", filesFound, pathStr);
-                    }
-                } catch (IOException e) {
-                    throw new RuntimeException("Error scanning directory: " + pathStr, e);
                 }
             }
+        } catch (IOException e) {
+            throw new FileScannerException(Messages.format(LogsCommonMessageKey.SCANNER_DIRECTORY_SCAN_ERROR), e);
         }
     }
 
-    private void ensureLockDirectoryExists(Path lockDirectory) {
-        try {
-            Files.createDirectories(lockDirectory);
-        } catch (IOException e) {
-            throw new IllegalStateException("Could not create scanner lock directory: " + lockDirectory, e);
+    /**
+     * Procesa un archivo del folder, intentando reclamarlo y procesarlo si es regular.
+     * @param file archivo a procesar
+     * @param lockDirectory directorio de lock
+     * @return FileProcessResult indicando si fue procesado o no
+     */
+    private FileProcessResult processFileFromFolder(Path file, Path lockDirectory) {
+        if (Files.isRegularFile(file)) {
+            Path lockedFile = claimFile(file, lockDirectory);
+            if (lockedFile != null) {
+                processClaimedFile(lockedFile);
+                return FileProcessResult.PROCESSED;
+            }
         }
+
+        return FileProcessResult.SKIPPED;
     }
 
     private Path claimFile(Path sourceFile, Path lockDirectory) {
@@ -80,20 +87,17 @@ public class FileScannerService {
             try {
                 return Files.move(sourceFile, targetFile);
             } catch (FileAlreadyExistsException alreadyClaimed) {
-                log.warn("File already claimed in lock directory during fallback move, skipping: {}", targetFile);
+                log.debug(Messages.format(LogsCommonMessageKey.FILE_ALREADY_CLAIMED, targetFile));
                 return null;
             } catch (IOException fallbackException) {
-                log.warn("Could not claim file '{}' into lock directory '{}': {}",
-                        sourceFile,
-                        lockDirectory,
-                        fallbackException.getMessage());
+                log.debug(Messages.format(LogsCommonMessageKey.FILE_COULD_NOT_CLAIM, sourceFile, lockDirectory, fallbackException.getMessage()));
                 return null;
             }
         } catch (FileAlreadyExistsException e) {
-            log.warn("File already claimed in lock directory, skipping: {}", targetFile);
+            log.debug(Messages.format(LogsCommonMessageKey.FILE_ALREADY_CLAIMED, targetFile));
             return null;
         } catch (IOException e) {
-            log.warn("Could not claim file '{}' into lock directory '{}': {}", sourceFile, lockDirectory, e.getMessage());
+            log.debug(Messages.format(LogsCommonMessageKey.FILE_COULD_NOT_CLAIM, sourceFile, lockDirectory, e.getMessage()));
             return null;
         }
     }
@@ -102,17 +106,12 @@ public class FileScannerService {
         try {
             MultipartFile multipartFile = PathMultipartFile.fromPath(lockedFile);
             FileBatchResult batchResult = fileUploadOrchestratorService.processFiles(new MultipartFile[]{multipartFile}, FileOrigin.JOB);
-            log.info("Scanner classified file '{}': processed={}, success={}, errors={}, duplicates={}",
-                    lockedFile.getFileName(),
-                    batchResult.processed(),
-                    batchResult.successCount(),
-                    batchResult.errors(),
-                    batchResult.alreadyExistsCount());
+            log.info(Messages.format(LogsCommonMessageKey.SCANNER_CLASSIFIED_FILE, lockedFile.getFileName(), batchResult.processed(), batchResult.successCount(), batchResult.errors(), batchResult.alreadyExistsCount()));
             if (!fileStorageUtil.deleteIfExists(lockedFile)) {
-                log.warn("Could not delete claimed lock file after classification: {}", lockedFile);
+                log.warn(Messages.format(LogsCommonMessageKey.COULD_NOT_DELETE_CLAIMED_FILE, lockedFile));
             }
         } catch (Exception e) {
-            log.error("Error classifying claimed file '{}'. File remains in lock directory for manual review.", lockedFile, e);
+            log.error(Messages.format(LogsCommonMessageKey.ERROR_CLASSIFYING_CLAIMED_FILE, lockedFile), e);
         }
     }
 

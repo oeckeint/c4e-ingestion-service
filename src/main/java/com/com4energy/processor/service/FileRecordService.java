@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.com4energy.processor.model.*;
 import com.com4energy.processor.repository.FileRecordRepository;
+import com.com4energy.processor.service.processing.FileTypeProcessorRegistry;
+import com.com4energy.processor.config.properties.FileProcessingJobProperties;
+import com.com4energy.processor.config.InstanceIdentifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -23,6 +26,9 @@ public class FileRecordService {
 
     private final FeatureFlagService feature;
     private final FileRecordRepository repository;
+    private final FileTypeProcessorRegistry fileTypeProcessorRegistry;
+    private final FileProcessingJobProperties fileProcessingJobProperties;
+    private final InstanceIdentifier instanceIdentifier;
 
     @Transactional
     public FileHandlingResult saveNew(FileHandlingResult currentResult) {
@@ -152,22 +158,22 @@ public class FileRecordService {
         return repository.findByLockedTrueAndLockedAtBefore(threshold);
     }
 
+
     @Transactional
-    public List<FileRecord> claimFilesForProcessing(
-            List<FileStatus> statuses,
-            Set<FileType> supportedTypes,
-            int batchSize,
-            String instanceId
-    ) {
-        if (statuses == null || statuses.isEmpty() || supportedTypes == null || supportedTypes.isEmpty() || batchSize <= 0) {
-            return List.of();
-        }
+    public List<FileRecord> claimFilesForProcessingByStatus(FileStatus status) {
+        return claimFilesForProcessing(List.of(status));
+    }
+
+    private List<FileRecord> claimFilesForProcessing(List<FileStatus> statuses) {
+
+        Set<FileType> supportedTypes = fileTypeProcessorRegistry.supportedTypes();
+        int batchSize = fileProcessingJobProperties.getBatchSize();
+        String instanceId = instanceIdentifier.getInstanceId();
 
         List<FileRecord> candidates = repository.findCandidatesForProcessing(
                 statuses,
                 List.copyOf(supportedTypes),
-                PageRequest.of(0, batchSize)
-        );
+                PageRequest.of(0, batchSize));
 
         candidates.forEach(fileRecord -> applyLock(fileRecord, instanceId));
         repository.saveAll(candidates);

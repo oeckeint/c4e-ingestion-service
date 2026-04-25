@@ -97,9 +97,8 @@ processor:
 
 file:
   processing:
-    interval-ms: 30000
+    interval-ms: 3000
     batch-size: 10
-  retry-interval-ms: 30000
 
 app:
   feature:

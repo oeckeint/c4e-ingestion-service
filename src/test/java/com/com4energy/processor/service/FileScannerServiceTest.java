@@ -1,6 +1,5 @@
 package com.com4energy.processor.service;
 
-import com.com4energy.processor.config.FeatureFlagService;
 import com.com4energy.processor.config.properties.FileScannerProperties;
 import com.com4energy.processor.model.FileOrigin;
 import com.com4energy.processor.service.dto.FileBatchResult;
@@ -34,16 +33,13 @@ class FileScannerServiceTest {
         Path lockDir = tempDir.resolve(".scanner-lock");
         Path incomingFile = Files.writeString(automaticDir.resolve("batch.xml"), "<xml/>");
 
-        FeatureFlagService featureFlagService = mock(FeatureFlagService.class);
         FileUploadOrchestratorService orchestratorService = mock(FileUploadOrchestratorService.class);
         FileStorageUtil fileStorageUtil = mock(FileStorageUtil.class);
 
-        when(featureFlagService.isPersistenceEnabled()).thenReturn(true);
         when(orchestratorService.processFiles(any(), eq(FileOrigin.JOB))).thenReturn(FileBatchResult.empty());
         when(fileStorageUtil.deleteIfExists(any(Path.class))).thenReturn(true);
 
         FileScannerService service = new FileScannerService(
-                featureFlagService,
                 orchestratorService,
                 fileStorageUtil,
                 scannerProperties(automaticDir, lockDir)
@@ -64,15 +60,12 @@ class FileScannerServiceTest {
         Path incomingFile = Files.writeString(automaticDir.resolve("failing.xml"), "<xml/>");
         Path lockedFile = lockDir.resolve("failing.xml");
 
-        FeatureFlagService featureFlagService = mock(FeatureFlagService.class);
         FileUploadOrchestratorService orchestratorService = mock(FileUploadOrchestratorService.class);
         FileStorageUtil fileStorageUtil = mock(FileStorageUtil.class);
 
-        when(featureFlagService.isPersistenceEnabled()).thenReturn(true);
         when(orchestratorService.processFiles(any(), eq(FileOrigin.JOB))).thenThrow(new RuntimeException("boom"));
 
         FileScannerService service = new FileScannerService(
-                featureFlagService,
                 orchestratorService,
                 fileStorageUtil,
                 scannerProperties(automaticDir, lockDir)
@@ -82,32 +75,6 @@ class FileScannerServiceTest {
 
         assertFalse(Files.exists(incomingFile));
         assertTrue(Files.exists(lockedFile));
-        verify(fileStorageUtil, never()).deleteIfExists(any(Path.class));
-    }
-
-    @Test
-    void scanAndRegisterFilesSkipsScanWhenPersistenceFlagIsDisabled() throws IOException {
-        Path automaticDir = Files.createDirectories(tempDir.resolve("automatic"));
-        Path lockDir = tempDir.resolve(".scanner-lock");
-        Path incomingFile = Files.writeString(automaticDir.resolve("disabled.xml"), "<xml/>");
-
-        FeatureFlagService featureFlagService = mock(FeatureFlagService.class);
-        FileUploadOrchestratorService orchestratorService = mock(FileUploadOrchestratorService.class);
-        FileStorageUtil fileStorageUtil = mock(FileStorageUtil.class);
-
-        when(featureFlagService.isPersistenceEnabled()).thenReturn(false);
-
-        FileScannerService service = new FileScannerService(
-                featureFlagService,
-                orchestratorService,
-                fileStorageUtil,
-                scannerProperties(automaticDir, lockDir)
-        );
-
-        service.scanAndRegisterFiles();
-
-        assertTrue(Files.exists(incomingFile));
-        verify(orchestratorService, never()).processFiles(any(), any());
         verify(fileStorageUtil, never()).deleteIfExists(any(Path.class));
     }
 
@@ -121,5 +88,7 @@ class FileScannerServiceTest {
         return props;
     }
 }
+
+
 
 
