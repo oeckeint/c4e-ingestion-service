@@ -14,6 +14,12 @@
 ### Si quieres TODOS LOS DETALLES (30 minutos)
 → Lee: `BATCH_PERSISTENCE_STRATEGY.md`
 
+### Si quieres entender el flujo funcional de medidas (5 minutos)
+→ Lee: `MEASURE_FLOW_ONBOARDING.md`
+
+### Si quieres ver lo pendiente para próximas iteraciones (5 minutos)
+→ Lee: `FUTURE_ENHANCEMENTS_BACKLOG.md`
+
 ### Si necesitas ubicar exactamente dónde ESTÁ TODO
 → Lee: `LOCALIZACION_CAMBIOS.md`
 
@@ -30,6 +36,8 @@
 | `BATCH_PERSISTENCE_STRATEGY.md` | Estrategia detallada | 30 min |
 | `LOCALIZACION_CAMBIOS.md` | Ubicación exacta de cambios | 5 min |
 | `IMPLEMENTACION_COMPLETADA.md` | Checklist de implementación | 5 min |
+| `MEASURE_FLOW_ONBOARDING.md` | Flujo parse→validate→persist→quarantine | 5 min |
+| `FUTURE_ENHANCEMENTS_BACKLOG.md` | Backlog priorizado fuera de la iteración | 5 min |
 | `README.md` (este) | Índice | 2 min |
 
 ---
@@ -182,6 +190,8 @@ Ejemplos: 15+
 │
 └── docs/ (NUEVA CARPETA)
     ├── BATCH_PERSISTENCE_STRATEGY.md
+    ├── MEASURE_FLOW_ONBOARDING.md
+    ├── FUTURE_ENHANCEMENTS_BACKLOG.md
     ├── RESPUESTA_FINAL.md
     ├── IMPLEMENTACION_COMPLETADA.md
     ├── LOCALIZACION_CAMBIOS.md
@@ -262,12 +272,12 @@ Concepto → Busca en:
 
 | Métrica | Valor |
 |---------|-------|
-| Documentos | 7 |
+| Documentos | 9 |
 | Palabras de documentación | ~25,000 |
 | Líneas de código modificadas | +35 |
 | Tests | 6 (todos pasan) |
 | Archivos editados | 2 |
-| Archivos creados | 7 |
+| Archivos creados | 9 |
 | Diagrama y tablas | 15+ |
 | Tiempo de implementación | ~2 horas |
 | Horas de documentación | ~3 horas |

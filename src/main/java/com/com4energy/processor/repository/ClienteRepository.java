@@ -1,7 +1,10 @@
 package com.com4energy.processor.repository;
 
 import com.com4energy.processor.model.ClienteEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -9,6 +12,16 @@ import java.util.List;
 @Repository
 public interface ClienteRepository extends JpaRepository<ClienteEntity, Long> {
 
-	List<ClienteEntity> findByCups(String cups);
+    @Query("""
+            select c.id as id, c.tarifa as tarifa
+            from ClienteEntity c
+            where c.cups = :cups
+            """)
+    List<ClienteLookupView> findLookupByCups(@Param("cups") String cups, Pageable pageable);
+
+    interface ClienteLookupView {
+        Long getId();
+        String getTarifa();
+    }
 
 }

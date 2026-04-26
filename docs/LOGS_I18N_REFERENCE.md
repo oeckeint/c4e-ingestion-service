@@ -57,6 +57,10 @@ mvn -q -DskipTests compile
 | `ERROR_CLASSIFYING_CLAIMED_FILE` | `log.error.classifying.claimed.file` |
 | `FILE_PENDING_JOB_CLAIMED` | `log.file.processing.job.pending.claimed` |
 | `FILE_RETRY_JOB_CLAIMED` | `log.file.processing.job.retry.claimed` |
+| `FILE_PROCESSING_JOB_STARTED` | `log.file.processing.job.started` |
+| `FILE_PROCESSING_JOB_COMPLETED` | `log.file.processing.job.completed` |
+| `FILE_PROCESSING_JOB_DISABLED` | `log.file.processing.job.disabled` |
+| `FILE_PROCESSING_JOB_FAILED` | `log.file.processing.job.failed` |
 
 ## Anti-patrones
 No usar:

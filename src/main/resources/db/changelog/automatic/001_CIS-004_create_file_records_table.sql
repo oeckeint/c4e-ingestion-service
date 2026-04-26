@@ -44,6 +44,7 @@ CREATE TABLE file_records (
 
     INDEX idx_original_filename (original_filename),
     INDEX idx_status_uploaded (status, uploaded_at),
+    INDEX idx_claim_processing (status, locked, type, uploaded_at, id),
     INDEX idx_status_retry (status, retry_count, last_attempt_at),
     INDEX idx_locked (locked, locked_at),
     UNIQUE INDEX idx_hash (hash),

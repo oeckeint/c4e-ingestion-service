@@ -1,6 +1,7 @@
 package com.com4energy.processor.job;
 
 import com.com4energy.processor.common.LogsCommonMessageKey;
+import com.com4energy.processor.common.SchedulerBeanNames;
 import com.com4energy.processor.config.FeatureFlagService;
 import com.com4energy.processor.model.FileStatus;
 import lombok.RequiredArgsConstructor;
@@ -13,15 +14,21 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class FileProcessingPendingJob {
 
+    private static final String JOB_NAME = "FileProcessingPendingJob";
+
     private final FileProcessingExecutor executor;
     private final FeatureFlagService flagsService;
 
-    @Scheduled(fixedDelayString = "#{fileProcessingJobProperties.intervalMs}")
+    @Scheduled(
+        fixedDelayString = "#{fileProcessingJobProperties.intervalMs}",
+        scheduler = SchedulerBeanNames.PENDING_JOB_SCHEDULER_BEAN
+    )
     public void processPendingFiles() {
         executor.execute(
             flagsService::isFileProcessingPendingJob,
             FileStatus.PENDING,
-            LogsCommonMessageKey.FILE_PENDING_JOB_CLAIMED
+            LogsCommonMessageKey.FILE_PENDING_JOB_CLAIMED,
+            JOB_NAME
         );
     }
 

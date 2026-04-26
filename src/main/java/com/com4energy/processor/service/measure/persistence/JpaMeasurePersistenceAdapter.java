@@ -1,6 +1,5 @@
 package com.com4energy.processor.service.measure.persistence;
 
-import com.com4energy.processor.model.ClienteEntity;
 import com.com4energy.processor.model.measure.MedidaCCHEntity;
 import com.com4energy.processor.model.measure.MedidaHEntity;
 import com.com4energy.processor.model.measure.MedidaLegacyEntity;
@@ -13,12 +12,14 @@ import com.com4energy.processor.repository.measure.MedidaQHRepository;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +30,6 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
 
     private static final String SYSTEM_USER = "SYSTEM";
     private static final int DEFAULT_BATCH_SIZE = 1000;
-    private static final int MIN_BATCH_SIZE = 1; // Para binary split recursivo
 
     private final MedidaHRepository medidaHRepository;
     private final MedidaQHRepository medidaQHRepository;
@@ -45,6 +45,9 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
     public MeasurePersistenceContracts.MeasurePersistenceResult persist(
             MeasurePersistenceContracts.PersistMeasuresCommand command
     ) {
+        BatchSplitContext context = batchContext.get();
+        context.reset();
+
         List<String> errors = new ArrayList<>();
         Map<String, ClienteResolution> clientCache = new HashMap<>();
 
@@ -56,38 +59,59 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
         int skipped = 0;
         int persisted = 0;
 
-        for (MeasureRecord measureRecord : command.measureRecords()) {
-            ClienteResolution resolution = resolveClient(measureRecord.cups(), clientCache);
-            if (!resolution.valid()) {
-                errors.add(resolution.errorMessage());
-                continue;
+        try {
+            for (MeasureRecord measureRecord : command.measureRecords()) {
+                ClienteResolution resolution = resolveClient(measureRecord.cups(), clientCache);
+                boolean hasInvalidClient = !resolution.valid();
+                boolean skipLegacyByTariff = measureRecord instanceof MeasureRecord.Legacy
+                        && !hasInvalidClient
+                        && is20TdTariff(resolution.tarifa());
+
+                if (hasInvalidClient) {
+                    errors.add(resolution.errorMessage());
+                } else if (skipLegacyByTariff) {
+                    skipped++;
+                } else {
+                    if (measureRecord instanceof MeasureRecord.Hourly hourly) {
+                        MedidaHEntity entity = toMedidaH(hourly, resolution.clientId());
+                        context.registerSource(entity, measureRecord);
+                        p1Batch.add(entity);
+                    } else if (measureRecord instanceof MeasureRecord.QuarterHourly quarterHourly) {
+                        MedidaQHEntity entity = toMedidaQH(quarterHourly, resolution.clientId());
+                        context.registerSource(entity, measureRecord);
+                        p2Batch.add(entity);
+                    } else if (measureRecord instanceof MeasureRecord.Legacy legacy) {
+                        MedidaLegacyEntity entity = toMedidaLegacy(legacy, resolution.clientId());
+                        context.registerSource(entity, measureRecord);
+                        f5Batch.add(entity);
+                    } else if (measureRecord instanceof MeasureRecord.Cch cch) {
+                        MedidaCCHEntity entity = toMedidaCch(cch, resolution.clientId());
+                        context.registerSource(entity, measureRecord);
+                        p5Batch.add(entity);
+                    }
+
+                    // Persist in batches to optimize performance while maintaining transactional integrity
+                    if (p1Batch.size() + p2Batch.size() + f5Batch.size() + p5Batch.size() >= DEFAULT_BATCH_SIZE) {
+                        persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
+                    }
+                }
             }
 
-            if (measureRecord instanceof MeasureRecord.Legacy && is20TdTariff(resolution.tarifa())) {
-                skipped++;
-                continue;
-            }
+            // Flush any remaining records
+            persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
 
-            if (measureRecord instanceof MeasureRecord.Hourly hourly) {
-                p1Batch.add(toMedidaH(hourly, resolution.clientId()));
-            } else if (measureRecord instanceof MeasureRecord.QuarterHourly quarterHourly) {
-                p2Batch.add(toMedidaQH(quarterHourly, resolution.clientId()));
-            } else if (measureRecord instanceof MeasureRecord.Legacy legacy) {
-                f5Batch.add(toMedidaLegacy(legacy, resolution.clientId()));
-            } else if (measureRecord instanceof MeasureRecord.Cch cch) {
-                p5Batch.add(toMedidaCch(cch, resolution.clientId()));
-            }
-
-            // Persist in batches to optimize performance while maintaining transactional integrity
-            if (p1Batch.size() + p2Batch.size() + f5Batch.size() + p5Batch.size() >= DEFAULT_BATCH_SIZE) {
-                persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
-            }
+            return new MeasurePersistenceContracts.MeasurePersistenceResult(
+                    persisted,
+                    errors.size(),
+                    skipped,
+                    errors,
+                    context.getFailedRecords(),
+                    null
+            );
+        } finally {
+            context.reset();
+            batchContext.remove();
         }
-
-        // Flush any remaining records
-        persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
-
-        return new MeasurePersistenceContracts.MeasurePersistenceResult(persisted, errors.size(), skipped, errors);
     }
 
     /**
@@ -168,8 +192,8 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
 
         if (batch.size() == 1) {
             // Base case: 1 registro = es el malo
-            logFailedRecord(batch.get(0), entityType, errorMessage);
-            batchContext.get().addFailedEntity(batch.get(0), entityType);
+            logFailedRecord(entityType, errorMessage);
+            batchContext.get().addFailedEntity(batch.get(0));
             return 0;
         }
 
@@ -202,7 +226,7 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
         return persistedCount;
     }
 
-    private void logFailedRecord(Object entity, EntityType entityType, String errorMessage) {
+    private void logFailedRecord(EntityType entityType, String errorMessage) {
         log.warn(
                 "Failed to persist record of type {}. Error: {}",
                 entityType,
@@ -218,21 +242,27 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
      * Contexto para tracking de registros fallidos durante binary split.
      */
     static class BatchSplitContext {
-        private final List<Object> failedEntities = new ArrayList<>();
-        private final Map<Object, EntityType> entityTypes = new HashMap<>();
+        private final List<MeasureRecord> failedRecords = new ArrayList<>();
+        private final Map<Object, MeasureRecord> sourceRecords = new IdentityHashMap<>();
 
-        void addFailedEntity(Object entity, EntityType type) {
-            failedEntities.add(entity);
-            entityTypes.put(entity, type);
+        void registerSource(Object entity, MeasureRecord sourceRecord) {
+            sourceRecords.put(entity, sourceRecord);
         }
 
-        List<Object> getFailedEntities() {
-            return new ArrayList<>(failedEntities);
+        void addFailedEntity(Object entity) {
+            MeasureRecord sourceRecord = sourceRecords.get(entity);
+            if (sourceRecord != null) {
+                failedRecords.add(sourceRecord);
+            }
+        }
+
+        List<MeasureRecord> getFailedRecords() {
+            return new ArrayList<>(failedRecords);
         }
 
         void reset() {
-            failedEntities.clear();
-            entityTypes.clear();
+            failedRecords.clear();
+            sourceRecords.clear();
         }
     }
 
@@ -241,8 +271,13 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
             return ClienteResolution.error("No se puede resolver el cliente porque el CUPS está vacío");
         }
 
-        return clientCache.computeIfAbsent(cups, key -> {
-            List<ClienteEntity> matches = clienteRepository.findByCups(key);
+        String normalizedCups = cups.trim();
+
+        return clientCache.computeIfAbsent(normalizedCups, key -> {
+            List<ClienteRepository.ClienteLookupView> matches = clienteRepository.findLookupByCups(
+                    key,
+                    PageRequest.of(0, 2)
+            );
             if (matches.isEmpty()) {
                 return ClienteResolution.error("No se encontró cliente para CUPS " + key);
             }
@@ -250,7 +285,7 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
                 return ClienteResolution.error("Se encontró más de un cliente para CUPS " + key);
             }
 
-            ClienteEntity client = matches.get(0);
+            ClienteRepository.ClienteLookupView client = matches.get(0);
             if (client.getId() == null) {
                 return ClienteResolution.error("El cliente para CUPS " + key + " no tiene id_cliente");
             }

@@ -58,9 +58,9 @@ El CSV esta orientado a lectura operativa/cliente y el JSONL a trazabilidad tecn
 
 Archivo: `src/main/resources/application.yml`
 
-- Variable de entorno opcional para base path:
+- Variable de entorno requerida para base path:
   - `C4E_HOST_STORAGE_ROOT`.
-  - Si no se define, usa `/Users/jesus/Downloads/com4energy`.
+  - Ejemplo: `export C4E_HOST_STORAGE_ROOT="$HOME/Downloads/com4energy"`.
 - Paths de trabajo:
   - `c4e.upload.base-path`
   - `c4e.upload.pending-path`
@@ -70,14 +70,18 @@ Archivo: `src/main/resources/application.yml`
 - Scanner:
   - `scanner.paths[]`
   - `scanner.scan-interval-ms`
-- Retry:
-  - `file.retry-interval-ms`
+- Procesamiento de jobs:
+  - `file.processing.interval-ms` (aplica a Pending y Retry)
+  - `file.processing.batch-size`
 - Feature flags:
   - `app.feature.enabled.persist-data`
   - `app.feature.enabled.send-messages`
   - `app.feature.enabled.receive-messages`
   - `app.feature.enabled.file-scanner-job`
+  - `app.feature.enabled.file-processing-job`
   - `app.feature.enabled.file-retry-job`
+- Observabilidad:
+  - `management.endpoints.web.exposure.include=health,info,metrics,scheduledtasks`
 - Incidentes (publisher):
   - `c4e.incidents.enabled`
   - `c4e.incidents.types.validation.exchange`
@@ -93,7 +97,7 @@ sdk env
 ./mvnw spring-boot:run
 ```
 
-Override opcional de ruta base:
+Config minima de entorno antes de arrancar:
 
 ```bash
 export C4E_HOST_STORAGE_ROOT="$HOME/Downloads/com4energy"

@@ -1,15 +1,17 @@
 package com.com4energy.processor.service.measure.validation;
 
-import com.com4energy.processor.model.ClienteEntity;
 import com.com4energy.processor.repository.ClienteRepository;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -20,7 +22,7 @@ class ClientExistsRecordValidatorTest {
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
         ClientExistsRecordValidator validator = new ClientExistsRecordValidator(clienteRepository);
 
-        when(clienteRepository.findByCups("ES123456789012345678")).thenReturn(List.of());
+        when(clienteRepository.findLookupByCups(eq("ES123456789012345678"), any(Pageable.class))).thenReturn(List.of());
 
         var result = validator.validate(hourly("ES123456789012345678"));
 
@@ -33,12 +35,8 @@ class ClientExistsRecordValidatorTest {
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
         ClientExistsRecordValidator validator = new ClientExistsRecordValidator(clienteRepository);
 
-        ClienteEntity c1 = new ClienteEntity();
-        c1.setId(1L);
-        ClienteEntity c2 = new ClienteEntity();
-        c2.setId(2L);
-
-        when(clienteRepository.findByCups("ES123456789012345678")).thenReturn(List.of(c1, c2));
+        when(clienteRepository.findLookupByCups(eq("ES123456789012345678"), any(Pageable.class)))
+                .thenReturn(List.of(client(1L, null), client(2L, null)));
 
         var result = validator.validate(hourly("ES123456789012345678"));
 
@@ -51,10 +49,8 @@ class ClientExistsRecordValidatorTest {
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
         ClientExistsRecordValidator validator = new ClientExistsRecordValidator(clienteRepository);
 
-        ClienteEntity c1 = new ClienteEntity();
-        c1.setId(null);
-
-        when(clienteRepository.findByCups("ES123456789012345678")).thenReturn(List.of(c1));
+        when(clienteRepository.findLookupByCups(eq("ES123456789012345678"), any(Pageable.class)))
+                .thenReturn(List.of(client(null, null)));
 
         var result = validator.validate(hourly("ES123456789012345678"));
 
@@ -67,10 +63,8 @@ class ClientExistsRecordValidatorTest {
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
         ClientExistsRecordValidator validator = new ClientExistsRecordValidator(clienteRepository);
 
-        ClienteEntity c1 = new ClienteEntity();
-        c1.setId(1L);
-
-        when(clienteRepository.findByCups("ES123456789012345678")).thenReturn(List.of(c1));
+        when(clienteRepository.findLookupByCups(eq("ES123456789012345678"), any(Pageable.class)))
+                .thenReturn(List.of(client(1L, null)));
 
         var result = validator.validate(hourly("ES123456789012345678"));
 
@@ -105,5 +99,19 @@ class ClientExistsRecordValidatorTest {
                 "P1D_0021_0894_20240104.0",
                 cups + ";11;2025/01/01 00:00:00;..."
         );
+    }
+
+    private ClienteRepository.ClienteLookupView client(Long id, String tarifa) {
+        return new ClienteRepository.ClienteLookupView() {
+            @Override
+            public Long getId() {
+                return id;
+            }
+
+            @Override
+            public String getTarifa() {
+                return tarifa;
+            }
+        };
     }
 }

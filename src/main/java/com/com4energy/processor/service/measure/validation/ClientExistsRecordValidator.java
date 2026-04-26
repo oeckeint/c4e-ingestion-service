@@ -1,10 +1,10 @@
 package com.com4energy.processor.service.measure.validation;
 
-import com.com4energy.processor.model.ClienteEntity;
 import com.com4energy.processor.repository.ClienteRepository;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -35,7 +35,12 @@ public class ClientExistsRecordValidator implements MeasureRecordValidator {
             return Optional.empty();
         }
 
-        List<ClienteEntity> matches = clienteRepository.findByCups(cups.trim());
+        String normalizedCups = cups.trim();
+
+        List<ClienteRepository.ClienteLookupView> matches = clienteRepository.findLookupByCups(
+                normalizedCups,
+                PageRequest.of(0, 2)
+        );
         if (matches.isEmpty()) {
             return Optional.of("No se encontró cliente para CUPS " + cups);
         }
@@ -43,7 +48,7 @@ public class ClientExistsRecordValidator implements MeasureRecordValidator {
             return Optional.of("Se encontró más de un cliente para CUPS " + cups);
         }
 
-        ClienteEntity client = matches.get(0);
+        ClienteRepository.ClienteLookupView client = matches.get(0);
         if (client.getId() == null) {
             return Optional.of("El cliente para CUPS " + cups + " no tiene id_cliente");
         }

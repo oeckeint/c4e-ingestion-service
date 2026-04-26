@@ -32,7 +32,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,scheduledtasks
   endpoint:
     health:
       show-details: always
@@ -42,7 +42,7 @@ management:
 
 c4e:
   upload:
-    base-path: ${C4E_HOST_STORAGE_ROOT:/Users/jesus/Downloads/com4energy}/ingestion-service
+    base-path: ${C4E_HOST_STORAGE_ROOT}/ingestion-service
     pending-path: ${c4e.upload.base-path}/pending
     processed-path: ${c4e.upload.base-path}/processed
     processing-path: ${c4e.upload.base-path}/processing
@@ -122,5 +122,5 @@ app:
       delay-processing-ms: false
       file-scanner-job: true
       file-processing-job: true
-      file-retry-job: false
+      file-retry-job: true
       scanner-lock-maintenance-job: true

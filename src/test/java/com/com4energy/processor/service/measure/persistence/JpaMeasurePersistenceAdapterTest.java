@@ -1,6 +1,5 @@
 package com.com4energy.processor.service.measure.persistence;
 
-import com.com4energy.processor.model.ClienteEntity;
 import com.com4energy.processor.model.measure.MedidaCCHEntity;
 import com.com4energy.processor.model.measure.MedidaHEntity;
 import com.com4energy.processor.model.measure.MedidaLegacyEntity;
@@ -13,15 +12,19 @@ import com.com4energy.processor.repository.measure.MedidaQHRepository;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -38,7 +41,7 @@ class JpaMeasurePersistenceAdapterTest {
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
-        when(clienteRepository.findByCups("ES0001")).thenReturn(List.of());
+        when(clienteRepository.findLookupByCups(eq("ES0001"), any(Pageable.class))).thenReturn(List.of());
 
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
@@ -75,7 +78,8 @@ class JpaMeasurePersistenceAdapterTest {
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
-        when(clienteRepository.findByCups("ES0002")).thenReturn(List.of(client(10L, "2.0A"), client(11L, "2.0A")));
+        when(clienteRepository.findLookupByCups(eq("ES0002"), any(Pageable.class)))
+                .thenReturn(List.of(client(10L, "2.0A"), client(11L, "2.0A")));
 
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
@@ -112,7 +116,7 @@ class JpaMeasurePersistenceAdapterTest {
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
-        when(clienteRepository.findByCups("ES0003")).thenReturn(List.of(client(12L, "20TD")));
+        when(clienteRepository.findLookupByCups(eq("ES0003"), any(Pageable.class))).thenReturn(List.of(client(12L, "20TD")));
 
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
@@ -148,10 +152,10 @@ class JpaMeasurePersistenceAdapterTest {
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
-        when(clienteRepository.findByCups("ES0101")).thenReturn(List.of(client(21L, "2.0A")));
-        when(clienteRepository.findByCups("ES0102")).thenReturn(List.of(client(22L, "2.0A")));
-        when(clienteRepository.findByCups("ES0103")).thenReturn(List.of(client(23L, "3.0A")));
-        when(clienteRepository.findByCups("ES0104")).thenReturn(List.of(client(24L, "2.0A")));
+        when(clienteRepository.findLookupByCups(eq("ES0101"), any(Pageable.class))).thenReturn(List.of(client(21L, "2.0A")));
+        when(clienteRepository.findLookupByCups(eq("ES0102"), any(Pageable.class))).thenReturn(List.of(client(22L, "2.0A")));
+        when(clienteRepository.findLookupByCups(eq("ES0103"), any(Pageable.class))).thenReturn(List.of(client(23L, "3.0A")));
+        when(clienteRepository.findLookupByCups(eq("ES0104"), any(Pageable.class))).thenReturn(List.of(client(24L, "2.0A")));
 
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
@@ -240,11 +244,18 @@ class JpaMeasurePersistenceAdapterTest {
         return captor.getValue();
     }
 
-    private ClienteEntity client(Long id, String tarifa) {
-        ClienteEntity cliente = new ClienteEntity();
-        cliente.setId(id);
-        cliente.setTarifa(tarifa);
-        return cliente;
+    private ClienteRepository.ClienteLookupView client(Long id, String tarifa) {
+        return new ClienteRepository.ClienteLookupView() {
+            @Override
+            public Long getId() {
+                return id;
+            }
+
+            @Override
+            public String getTarifa() {
+                return tarifa;
+            }
+        };
     }
 
     private MeasureRecord.Hourly hourly(String cups) {
@@ -342,8 +353,8 @@ class JpaMeasurePersistenceAdapterTest {
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
-        ClienteEntity client = client(1L, "2.0A");
-        when(clienteRepository.findByCups("ES0001")).thenReturn(List.of(client));
+        ClienteRepository.ClienteLookupView client = client(1L, "2.0A");
+        when(clienteRepository.findLookupByCups(eq("ES0001"), any(Pageable.class))).thenReturn(List.of(client));
 
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
@@ -394,8 +405,8 @@ class JpaMeasurePersistenceAdapterTest {
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
-        ClienteEntity client = client(1L, "2.0A");
-        when(clienteRepository.findByCups("ES0001")).thenReturn(List.of(client));
+        ClienteRepository.ClienteLookupView client = client(1L, "2.0A");
+        when(clienteRepository.findLookupByCups(eq("ES0001"), any(Pageable.class))).thenReturn(List.of(client));
 
         // Mock: first call (all 3) fails, then both halves succeed
         when(medidaHRepository.saveAll(argThat(list -> 
@@ -423,6 +434,76 @@ class JpaMeasurePersistenceAdapterTest {
 
         // Should persist some records even though one batch failed
         assertTrue(result.persistedCount() >= 0, "Should attempt to recover from failure");
+    }
+
+    @Test
+    void persistReturnsFailedRecordsWhenBinarySplitIsolatesInvalidRecord() {
+        MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
+        MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
+        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
+        MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
+        ClienteRepository clienteRepository = mock(ClienteRepository.class);
+
+        ClienteRepository.ClienteLookupView client = client(1L, "2.0A");
+        when(clienteRepository.findLookupByCups(eq("ES0001"), any(Pageable.class))).thenReturn(List.of(client));
+
+        AtomicBoolean singleRecordFailed = new AtomicBoolean(false);
+        when(medidaHRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            List<?> batch = invocation.getArgument(0);
+            if (batch.size() == 2) {
+                throw new RuntimeException("Constraint violation");
+            }
+            if (batch.size() == 1 && !singleRecordFailed.get()) {
+                singleRecordFailed.set(true);
+                throw new RuntimeException("Single record violation");
+            }
+            return null;
+        });
+
+        JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
+                medidaHRepository,
+                medidaQHRepository,
+                medidaLegacyRepository,
+                medidaCCHRepository,
+                clienteRepository
+        );
+
+        MeasureRecord.Hourly first = hourly("ES0001");
+        MeasureRecord.Hourly second = hourly("ES0001");
+        MeasurePersistenceContracts.MeasurePersistenceResult result = adapter.persist(
+                new MeasurePersistenceContracts.PersistMeasuresCommand(1L, "test", List.of(first, second))
+        );
+
+        assertEquals(1, result.persistedCount());
+        assertEquals(1, result.failedRecords().size());
+        assertEquals(first, result.failedRecords().get(0));
+    }
+
+    @Test
+    void persistReusesClientLookupForRepeatedCups() {
+        MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
+        MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
+        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
+        MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
+        ClienteRepository clienteRepository = mock(ClienteRepository.class);
+
+        when(clienteRepository.findLookupByCups(eq("ES0001"), any(Pageable.class))).thenReturn(List.of(client(1L, "2.0A")));
+
+        JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
+                medidaHRepository,
+                medidaQHRepository,
+                medidaLegacyRepository,
+                medidaCCHRepository,
+                clienteRepository
+        );
+
+        adapter.persist(new MeasurePersistenceContracts.PersistMeasuresCommand(
+                1L,
+                "repeated-cups",
+                List.of(hourly("ES0001"), hourly("ES0001"), hourly("ES0001"))
+        ));
+
+        verify(clienteRepository, times(1)).findLookupByCups(eq("ES0001"), any(Pageable.class));
     }
 }
 
