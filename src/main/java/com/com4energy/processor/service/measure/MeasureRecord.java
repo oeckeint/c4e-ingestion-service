@@ -1,11 +1,13 @@
 package com.com4energy.processor.service.measure;
 
+import com.com4energy.processor.model.FileType;
+
 import java.time.LocalDateTime;
 
 public sealed interface MeasureRecord permits MeasureRecord.Hourly,
-        MeasureRecord.QuarterHourly, MeasureRecord.Legacy, MeasureRecord.Cch {
+        MeasureRecord.QuarterHourly, MeasureRecord.Cch {
 
-    MeasureFileKind kind();
+    FileType kind();
 
     String cups();
 
@@ -40,8 +42,8 @@ public sealed interface MeasureRecord permits MeasureRecord.Hourly,
             String rawLine
     ) implements MeasureRecord {
         @Override
-        public MeasureFileKind kind() {
-            return MeasureFileKind.P1;
+        public FileType kind() {
+            return FileType.MEDIDA_H_P1;
         }
     }
 
@@ -67,38 +69,19 @@ public sealed interface MeasureRecord permits MeasureRecord.Hourly,
             int medres2,
             int qmedres2,
             int metodObt,
-            int temporal,
+            Integer temporal,
             String origen,
             String rawLine
     ) implements MeasureRecord {
         @Override
-        public MeasureFileKind kind() {
-            return MeasureFileKind.P2;
+        public FileType kind() {
+            return FileType.MEDIDA_QH_P2;
         }
     }
 
-    record Legacy(
-            String cups,
-            LocalDateTime timestamp,
-            int banderaInvVer,
-            int ae1,
-            int as1,
-            int rq1,
-            int rq2,
-            int rq3,
-            int rq4,
-            int metodObt,
-            int indicFirmez,
-            String codigoFactura,
-            String rawLine
-    ) implements MeasureRecord {
-        @Override
-        public MeasureFileKind kind() {
-            return MeasureFileKind.F5;
-        }
-    }
 
     record Cch(
+            FileType kind,
             String cups,
             LocalDateTime timestamp,
             int banderaInvVer,
@@ -106,9 +89,15 @@ public sealed interface MeasureRecord permits MeasureRecord.Hourly,
             int metod,
             String rawLine
     ) implements MeasureRecord {
-        @Override
-        public MeasureFileKind kind() {
-            return MeasureFileKind.P5;
+        public Cch(
+                String cups,
+                LocalDateTime timestamp,
+                int banderaInvVer,
+                int actent,
+                int metod,
+                String rawLine
+        ) {
+            this(FileType.MEDIDA_CCH_F5, cups, timestamp, banderaInvVer, actent, metod, rawLine);
         }
     }
 }

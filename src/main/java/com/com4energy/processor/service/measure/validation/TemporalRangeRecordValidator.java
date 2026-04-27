@@ -22,12 +22,16 @@ public class TemporalRangeRecordValidator implements MeasureRecordValidator {
 
 	@Override
 	public Optional<String> validate(MeasureRecord measureRecord) {
-		int temporal;
+		Integer temporal;
 		if (measureRecord instanceof MeasureRecord.Hourly hourly) {
 			temporal = hourly.temporal();
 		} else if (measureRecord instanceof MeasureRecord.QuarterHourly quarterHourly) {
 			temporal = quarterHourly.temporal();
 		} else {
+			return Optional.empty();
+		}
+
+		if (temporal == null) {
 			return Optional.empty();
 		}
 

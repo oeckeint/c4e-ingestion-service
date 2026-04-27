@@ -29,7 +29,7 @@ class FileRecordOriginTest {
     void fromDetectsMeasureTypeByFilenamePrefix() {
         FileRecord record = FileRecord.from(validContext("P1AA_BBBB_CCCC_DDDDDDD.0"));
 
-        assertEquals(FileType.MEDIDA_QH_P1, record.getType());
+        assertEquals(FileType.MEDIDA_H_P1, record.getType());
     }
 
     private FileContext validContext(String filename) {

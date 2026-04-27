@@ -1,5 +1,8 @@
 package com.com4energy.processor.service.measure;
 
+import com.com4energy.i18n.core.Messages;
+import com.com4energy.processor.common.LogsCommonMessageKey;
+import com.com4energy.processor.model.FileType;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -18,25 +21,31 @@ import java.util.List;
 @Service
 public class MeasureFileParserService {
 
-    private static final int EXPECTED_FILENAME_LENGTH = 24;
-    private static final int EXPECTED_NAME_TOKENS = 4;
     private static final int EXPECTED_P1_COLUMNS = 22;
     private static final int MIN_P2_COLUMNS = 21;
-    private static final int MAX_P2_COLUMNS = 22;
+    private static final int MAX_P2_COLUMNS = 23;
     private static final int EXPECTED_F5_COLUMNS = 12;
-    private static final int EXPECTED_P5_COLUMNS = 5;
-    private static final int DEFAULT_P2_TEMPORAL = 99;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm");
     private static final DateTimeFormatter DATE_TIME_WITH_SECONDS_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
 
-    public MeasureParseResult parse(Path file) throws IOException {
+    /**
+     * Parse a measure file using the provided FileType to determine the structure.
+     * The FileType comes from the database (pre-classified at ingestion time) — not recalculated here.
+     */
+    public MeasureParseResult parse(Path file, FileType fileType) throws IOException {
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            return parse(file.getFileName().toString(), reader);
+            return parse(file.getFileName().toString(), reader, fileType);
         }
     }
 
-    public MeasureParseResult parse(String fileName, Reader reader) throws IOException {
-        MeasureFilenameMetadata metadata = parseFilename(fileName);
+    /**
+     * Parse a measure file using the provided FileType.
+     * @param fileName the filename (used for error reporting only)
+     * @param reader the file content reader
+     * @param fileType the pre-classified file type from the database
+     */
+    public MeasureParseResult parse(String fileName, Reader reader, FileType fileType) throws IOException {
+        MeasureFilenameMetadata metadata = new MeasureFilenameMetadata(fileName, fileType);
         List<MeasureRecord> records = new ArrayList<>();
         List<MeasureLineParseError> errors = new ArrayList<>();
 
@@ -56,47 +65,6 @@ public class MeasureFileParserService {
         return new MeasureParseResult(metadata, records, errors);
     }
 
-    public MeasureFilenameMetadata parseFilename(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
-            throw new InvalidMeasureFilenameException("El nombre del archivo de medidas es obligatorio");
-        }
-        if (fileName.contains(" ")) {
-            throw new InvalidMeasureFilenameException("El nombre del archivo de medidas no puede contener espacios");
-        }
-        if (fileName.length() != EXPECTED_FILENAME_LENGTH) {
-            throw new InvalidMeasureFilenameException(
-                    "El nombre del archivo de medidas debe tener exactamente 24 caracteres"
-            );
-        }
-
-        String[] tokens = fileName.split("_");
-        if (tokens.length != EXPECTED_NAME_TOKENS) {
-            throw new InvalidMeasureFilenameException(
-                    "El nombre del archivo de medidas no contiene la cantidad esperada de segmentos"
-            );
-        }
-
-        String[] tailParts = tokens[EXPECTED_NAME_TOKENS - 1].split("\\.");
-        if (tailParts.length != 2) {
-            throw new InvalidMeasureFilenameException("El archivo de medidas debe incluir una extensión numérica");
-        }
-
-        String extension = tailParts[1];
-        if (extension.length() != 1 || !Character.isDigit(extension.charAt(0))) {
-            throw new InvalidMeasureFilenameException("La extensión del archivo de medidas debe ser un dígito entre 0 y 9");
-        }
-
-        List<String> normalizedTokens = new ArrayList<>(Arrays.asList(tokens));
-        normalizedTokens.set(EXPECTED_NAME_TOKENS - 1, tailParts[0]);
-
-        return new MeasureFilenameMetadata(
-                fileName,
-                MeasureFileKind.fromPrefix(tokens[0]),
-                normalizedTokens,
-                Integer.parseInt(extension)
-        );
-    }
-
     private BufferedReader toBufferedReader(Reader reader) {
         if (reader instanceof BufferedReader bufferedReader) {
             return bufferedReader;
@@ -107,59 +75,40 @@ public class MeasureFileParserService {
     private MeasureRecord parseLine(MeasureFilenameMetadata metadata, String line, int lineNumber) {
         String[] elements = line.split(";", -1);
         return switch (metadata.kind()) {
-            case P1 -> parseP1(metadata, elements, line, lineNumber);
-            case P2 -> parseP2(metadata, elements, line, lineNumber);
-            case F5 -> parseF5(metadata, elements, line, lineNumber);
-            case P5 -> parseP5(metadata, elements, line, lineNumber);
+            case MEDIDA_H_P1 -> parseP1(metadata, elements, line, lineNumber);
+            case MEDIDA_QH_P2 -> parseP2(metadata, elements, line, lineNumber);
+            case MEDIDA_CCH_F5 -> parseF5(metadata, elements, line, lineNumber);
+            default -> throw new IllegalArgumentException(
+                    Messages.format(LogsCommonMessageKey.MEASURE_FILE_KIND_UNSUPPORTED, metadata.kind()));
         };
     }
 
     private MeasureRecord parseP1(MeasureFilenameMetadata metadata, String[] elements, String line, int lineNumber) {
-        validateExactColumnCount(metadata.originalFilename(), elements, lineNumber, EXPECTED_P1_COLUMNS);
-        int cursor = 0;
+        validateExactColumnCount(metadata.originalFilename(), elements, lineNumber);
+        ElementsCursor cursor = new ElementsCursor(elements);
         try {
-            String cups = elements[cursor++];
-            int tipoMedida = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            LocalDateTime timestamp = parseTimestamp(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float banderaInvVer = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float actent = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qactent = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float actsal = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qactsal = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float rQ1 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qrQ1 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float rQ2 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qrQ2 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float rQ3 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qrQ3 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float rQ4 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qrQ4 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float medres1 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qmedres1 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float medres2 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            float qmedres2 = parseFloat(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int metodObt = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int temporal = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
+            String cups = cursor.nextRaw();
+            int tipoMedida = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            LocalDateTime timestamp = cursor.nextTimestamp(metadata.originalFilename(), lineNumber);
+            float banderaInvVer = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float actent = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qactent = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float actsal = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qactsal = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float rQ1 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qrQ1 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float rQ2 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qrQ2 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float rQ3 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qrQ3 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float rQ4 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qrQ4 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float medres1 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qmedres1 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float medres2 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            float qmedres2 = cursor.nextFloat(metadata.originalFilename(), lineNumber);
+            int metodObt = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int temporal = cursor.nextInt(metadata.originalFilename(), lineNumber);
 
             return new MeasureRecord.Hourly(
                     cups,
@@ -197,52 +146,33 @@ public class MeasureFileParserService {
             throw invalidColumnCount(metadata.originalFilename(), elements, lineNumber, MIN_P2_COLUMNS);
         }
 
-        int cursor = 0;
+        ElementsCursor cursor = new ElementsCursor(elements);
         try {
-            String cups = elements[cursor++];
-            int tipoMedida = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            LocalDateTime timestamp = parseTimestamp(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int banderaInvVer = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int actent = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qactent = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int actsal = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qactsal = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int rQ1 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qrQ1 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int rQ2 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qrQ2 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int rQ3 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qrQ3 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int rQ4 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qrQ4 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int medres1 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qmedres1 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int medres2 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int qmedres2 = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int metodObt = parseInteger(elements[cursor], metadata.originalFilename(), lineNumber);
-            cursor++;
-            int temporal = elements.length > cursor
-                    ? parseInteger(elements[cursor], metadata.originalFilename(), lineNumber)
-                    : DEFAULT_P2_TEMPORAL;
+            String cups = cursor.nextRaw();
+            int tipoMedida = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            LocalDateTime timestamp = cursor.nextTimestamp(metadata.originalFilename(), lineNumber);
+            int banderaInvVer = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int actent = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qactent = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int actsal = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qactsal = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int rQ1 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qrQ1 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int rQ2 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qrQ2 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int rQ3 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qrQ3 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int rQ4 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qrQ4 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int medres1 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qmedres1 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int medres2 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int qmedres2 = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            int metodObt = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            Integer temporal = null;
+            if (cursor.hasNext() && !cursor.peek().isBlank()) {
+                temporal = cursor.nextInt(metadata.originalFilename(), lineNumber);
+            }
 
             return new MeasureRecord.QuarterHourly(
                     cups,
@@ -278,19 +208,20 @@ public class MeasureFileParserService {
     private MeasureRecord parseF5(MeasureFilenameMetadata metadata, String[] elements, String line, int lineNumber) {
         validateF5Columns(metadata.originalFilename(), elements, lineNumber);
 
-        return new MeasureRecord.Legacy(
-                elements[0],
-                parseTimestamp(elements[1], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[2], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[3], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[4], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[5], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[6], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[7], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[8], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[9], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[10], metadata.originalFilename(), lineNumber),
-                elements[11],
+        ElementsCursor cursor = new ElementsCursor(elements);
+        String cups = cursor.nextRaw();
+        LocalDateTime timestamp = cursor.nextTimestamp(metadata.originalFilename(), lineNumber);
+        int banderaInvVer = cursor.nextInt(metadata.originalFilename(), lineNumber);
+        int actent = cursor.nextInt(metadata.originalFilename(), lineNumber);
+        cursor.skipF5IntermediateFields();
+        int metod = cursor.nextInt(metadata.originalFilename(), lineNumber);
+
+        return new MeasureRecord.Cch(
+                cups,
+                timestamp,
+                banderaInvVer,
+                actent,
+                metod,
                 line
         );
     }
@@ -307,22 +238,9 @@ public class MeasureFileParserService {
         }
     }
 
-    private MeasureRecord parseP5(MeasureFilenameMetadata metadata, String[] elements, String line, int lineNumber) {
-        validateExactColumnCount(metadata.originalFilename(), elements, lineNumber, EXPECTED_P5_COLUMNS);
-
-        return new MeasureRecord.Cch(
-                elements[0],
-                parseTimestamp(elements[1], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[2], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[3], metadata.originalFilename(), lineNumber),
-                parseInteger(elements[4], metadata.originalFilename(), lineNumber),
-                line
-        );
-    }
-
-    private void validateExactColumnCount(String fileName, String[] elements, int lineNumber, int expectedCount) {
-        if (elements.length != expectedCount) {
-            throw invalidColumnCount(fileName, elements, lineNumber, expectedCount);
+    private void validateExactColumnCount(String fileName, String[] elements, int lineNumber) {
+        if (elements.length != EXPECTED_P1_COLUMNS) {
+            throw invalidColumnCount(fileName, elements, lineNumber, EXPECTED_P1_COLUMNS);
         }
     }
 
@@ -333,48 +251,71 @@ public class MeasureFileParserService {
             int expectedCount
     ) {
         return new IllegalArgumentException(
-                "La entrada " + Arrays.toString(elements)
-                        + " en la línea " + lineNumber
-                        + " del archivo " + fileName
-                        + " no coincide con la cantidad de datos esperados ("
-                        + expectedCount + ")."
-        );
+                Messages.format(LogsCommonMessageKey.MEASURE_LINE_INVALID_COLUMN_COUNT,
+                        Arrays.toString(elements), lineNumber, fileName, expectedCount));
     }
 
-    private LocalDateTime parseTimestamp(String value, String fileName, int lineNumber) {
-        try {
-            return LocalDateTime.parse(value, DATE_TIME_WITH_SECONDS_FORMATTER);
-        } catch (DateTimeParseException ex) {
+    private static final class ElementsCursor {
+        private final String[] elements;
+        private int index;
+
+        private ElementsCursor(String[] elements) {
+            this.elements = elements;
+            this.index = 0;
+        }
+
+        private String nextRaw() {
+            return elements[index++];
+        }
+
+        private int nextInt(String fileName, int lineNumber) {
+            String value = nextRaw();
             try {
-                return LocalDateTime.parse(value, DATE_FORMATTER);
-            } catch (DateTimeParseException ignored) {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException ex) {
                 throw conversionError(value, fileName, lineNumber);
             }
         }
-    }
 
-    private int parseInteger(String value, String fileName, int lineNumber) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException ex) {
-            throw conversionError(value, fileName, lineNumber);
+        private float nextFloat(String fileName, int lineNumber) {
+            String value = nextRaw();
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException ex) {
+                throw conversionError(value, fileName, lineNumber);
+            }
         }
-    }
 
-    private float parseFloat(String value, String fileName, int lineNumber) {
-        try {
-            return Float.parseFloat(value);
-        } catch (NumberFormatException ex) {
-            throw conversionError(value, fileName, lineNumber);
+        private LocalDateTime nextTimestamp(String fileName, int lineNumber) {
+            String value = nextRaw();
+            try {
+                return LocalDateTime.parse(value, DATE_TIME_WITH_SECONDS_FORMATTER);
+            } catch (DateTimeParseException ex) {
+                try {
+                    return LocalDateTime.parse(value, DATE_FORMATTER);
+                } catch (DateTimeParseException ignored) {
+                    throw conversionError(value, fileName, lineNumber);
+                }
+            }
         }
-    }
 
-    private IllegalArgumentException conversionError(String value, String fileName, int lineNumber) {
-        return new IllegalArgumentException(
-                "No se pudo convertir el elemento " + value
-                        + " en la línea " + lineNumber
-                        + " del archivo " + fileName
-        );
+        private boolean hasNext() {
+            return index < elements.length;
+        }
+
+        private String peek() {
+            return elements[index];
+        }
+
+        /** Salta las columnas as1, rq1, rq2, rq3, rq4 del formato F5 que no se mapean a CCH. */
+        private void skipF5IntermediateFields() {
+            index += 5;
+        }
+
+        private IllegalArgumentException conversionError(String value, String fileName, int lineNumber) {
+            return new IllegalArgumentException(
+                    Messages.format(LogsCommonMessageKey.MEASURE_LINE_CONVERSION_ERROR,
+                            value, lineNumber, fileName));
+        }
     }
 }
-

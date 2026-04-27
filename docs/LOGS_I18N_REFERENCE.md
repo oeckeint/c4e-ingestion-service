@@ -61,6 +61,7 @@ mvn -q -DskipTests compile
 | `FILE_PROCESSING_JOB_COMPLETED` | `log.file.processing.job.completed` |
 | `FILE_PROCESSING_JOB_DISABLED` | `log.file.processing.job.disabled` |
 | `FILE_PROCESSING_JOB_FAILED` | `log.file.processing.job.failed` |
+| `MEASURE_FILE_PROCESSED` | `log.measure.file.processed` |
 
 ## Anti-patrones
 No usar:

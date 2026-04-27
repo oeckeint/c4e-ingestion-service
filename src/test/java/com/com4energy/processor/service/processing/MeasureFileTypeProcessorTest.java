@@ -3,9 +3,9 @@ package com.com4energy.processor.service.processing;
 import com.com4energy.processor.model.FailureReason;
 import com.com4energy.processor.model.FileRecord;
 import com.com4energy.processor.model.BusinessResult;
+import com.com4energy.processor.model.FileType;
 import com.com4energy.processor.model.QualityStatus;
 import com.com4energy.processor.outbox.domain.OutboxEventType;
-import com.com4energy.processor.service.measure.MeasureFileKind;
 import com.com4energy.processor.service.measure.MeasureFileParserService;
 import com.com4energy.processor.service.measure.MeasureFilenameMetadata;
 import com.com4energy.processor.service.measure.MeasureParseResult;
@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,9 +46,10 @@ class MeasureFileTypeProcessorTest {
         FileRecord fileRecord = FileRecord.builder()
                 .id(10L)
                 .originalFilename("P1D_0021_0894_20240104.0")
+                .type(FileType.MEDIDA_H_P1)
                 .build();
 
-        when(parserService.parse(any(Path.class))).thenReturn(validParseResult());
+        when(parserService.parse(any(Path.class), eq(FileType.MEDIDA_H_P1))).thenReturn(validParseResult());
         when(validationChain.validate(any(List.class), org.mockito.ArgumentMatchers.eq(ValidationMode.TOLERANT)))
                 .thenReturn(new MeasureRecordValidationResult(List.of(hourlyRecord()), List.of()));
         when(persistencePort.persist(any(MeasurePersistenceContracts.PersistMeasuresCommand.class)))
@@ -71,7 +73,7 @@ class MeasureFileTypeProcessorTest {
         assertEquals(3, fileRecord.getDefectedRecords());
         assertNotNull(fileRecord.getParseDurationMs());
 
-        verify(parserService).parse(any(Path.class));
+        verify(parserService).parse(any(Path.class), any(FileType.class));
         verify(validationChain).validate(any(List.class), org.mockito.ArgumentMatchers.eq(ValidationMode.TOLERANT));
         verify(persistencePort).persist(any(MeasurePersistenceContracts.PersistMeasuresCommand.class));
     }
@@ -88,6 +90,7 @@ class MeasureFileTypeProcessorTest {
         FileRecord fileRecord = FileRecord.builder()
                 .id(11L)
                 .originalFilename("P1D_0021_0894_20240104.0")
+                .type(FileType.MEDIDA_H_P1)
                 .build();
 
         MeasureParseResult parseResultWithErrors = new MeasureParseResult(
@@ -96,7 +99,7 @@ class MeasureFileTypeProcessorTest {
                 List.of(new com.com4energy.processor.service.measure.MeasureLineParseError(2, "bad", "Dato inválido"))
         );
 
-        when(parserService.parse(any(Path.class))).thenReturn(parseResultWithErrors);
+        when(parserService.parse(any(Path.class), eq(FileType.MEDIDA_H_P1))).thenReturn(parseResultWithErrors);
 
         FileTypeProcessingResult result = processor.process(fileRecord, Path.of("/tmp/P1D_0021_0894_20240104.0"));
 
@@ -109,7 +112,7 @@ class MeasureFileTypeProcessorTest {
         assertEquals(1, fileRecord.getDefectedRecords());
         assertNotNull(fileRecord.getParseDurationMs());
 
-        verify(parserService).parse(any(Path.class));
+        verify(parserService).parse(any(Path.class), any(FileType.class));
         verify(validationChain, never()).validate(any(List.class), any(ValidationMode.class));
         verify(persistencePort, never()).persist(any(MeasurePersistenceContracts.PersistMeasuresCommand.class));
     }
@@ -126,6 +129,7 @@ class MeasureFileTypeProcessorTest {
         FileRecord fileRecord = FileRecord.builder()
                 .id(55L)
                 .originalFilename("P1D_0021_0894_20240104.0")
+                .type(FileType.MEDIDA_H_P1)
                 .build();
 
         MeasureParseResult parseResultWithErrors = new MeasureParseResult(
@@ -133,7 +137,7 @@ class MeasureFileTypeProcessorTest {
                 List.of(hourlyRecord()),
                 List.of(new com.com4energy.processor.service.measure.MeasureLineParseError(3, "bad;data", "Formato inválido"))
         );
-        when(parserService.parse(any(Path.class))).thenReturn(parseResultWithErrors);
+        when(parserService.parse(any(Path.class), eq(FileType.MEDIDA_H_P1))).thenReturn(parseResultWithErrors);
         when(defectReportService.writeParseDefectReport(any(), any()))
                 .thenReturn(java.util.Optional.of(Path.of("/tmp/P1D_0021.sge_defect.jsonl")));
 
@@ -157,9 +161,10 @@ class MeasureFileTypeProcessorTest {
         FileRecord fileRecord = FileRecord.builder()
                 .id(77L)
                 .originalFilename("P1D_0021_0894_20240104.0")
+                .type(FileType.MEDIDA_H_P1)
                 .build();
 
-        when(parserService.parse(any(Path.class))).thenReturn(validParseResult());
+        when(parserService.parse(any(Path.class), eq(FileType.MEDIDA_H_P1))).thenReturn(validParseResult());
         when(validationChain.validate(any(List.class), org.mockito.ArgumentMatchers.eq(ValidationMode.TOLERANT)))
                 .thenReturn(new MeasureRecordValidationResult(
                         List.of(),
@@ -191,11 +196,12 @@ class MeasureFileTypeProcessorTest {
         FileRecord fileRecord = FileRecord.builder()
                 .id(99L)
                 .originalFilename("P1D_0021_0894_20240104.0")
+                .type(FileType.MEDIDA_H_P1)
                 .build();
 
         // Persistencia devuelve 1 registro fallido (binary split isolation)
         MeasureRecord.Hourly failedRecord = hourlyRecord();
-        when(parserService.parse(any(Path.class))).thenReturn(validParseResult());
+        when(parserService.parse(any(Path.class), eq(FileType.MEDIDA_H_P1))).thenReturn(validParseResult());
         when(validationChain.validate(any(List.class), org.mockito.ArgumentMatchers.eq(ValidationMode.TOLERANT)))
                 .thenReturn(new MeasureRecordValidationResult(List.of(failedRecord), List.of()));
         when(persistencePort.persist(any(MeasurePersistenceContracts.PersistMeasuresCommand.class)))
@@ -232,12 +238,7 @@ class MeasureFileTypeProcessorTest {
     }
 
     private MeasureFilenameMetadata metadata() {
-        return new MeasureFilenameMetadata(
-                "P1D_0021_0894_20240104.0",
-                MeasureFileKind.P1,
-                List.of("P1D", "0021", "0894", "20240104"),
-                0
-        );
+        return new MeasureFilenameMetadata("P1D_0021_0894_20240104.0", FileType.MEDIDA_H_P1);
     }
 
     private MeasureRecord.Hourly hourlyRecord() {

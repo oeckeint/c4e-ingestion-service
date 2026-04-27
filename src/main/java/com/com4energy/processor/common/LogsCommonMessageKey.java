@@ -18,7 +18,26 @@ public enum LogsCommonMessageKey implements MessageKey {
     FILE_PROCESSING_JOB_STARTED("log.file.processing.job.started"),
     FILE_PROCESSING_JOB_COMPLETED("log.file.processing.job.completed"),
     FILE_PROCESSING_JOB_DISABLED("log.file.processing.job.disabled"),
-    FILE_PROCESSING_JOB_FAILED("log.file.processing.job.failed");
+    FILE_PROCESSING_JOB_FAILED("log.file.processing.job.failed"),
+
+    // Parser de medidas — errores de nombre de archivo
+    MEASURE_FILENAME_REQUIRED("log.measure.filename.required"),
+    MEASURE_FILENAME_NO_SPACES("log.measure.filename.no.spaces"),
+    MEASURE_FILENAME_INVALID_LENGTH("log.measure.filename.invalid.length"),
+    MEASURE_FILENAME_INVALID_SEGMENTS("log.measure.filename.invalid.segments"),
+    MEASURE_FILENAME_NO_EXTENSION("log.measure.filename.no.extension"),
+    MEASURE_FILENAME_INVALID_EXTENSION("log.measure.filename.invalid.extension"),
+    MEASURE_FILENAME_UNKNOWN_TYPE("log.measure.filename.unknown.type"),
+
+    // Parser de medidas — errores de línea
+    MEASURE_LINE_INVALID_COLUMN_COUNT("log.measure.line.invalid.column.count"),
+    MEASURE_LINE_CONVERSION_ERROR("log.measure.line.conversion.error"),
+    MEASURE_FILE_KIND_UNSUPPORTED("log.measure.file.kind.unsupported"),
+
+    // Procesamiento de medidas
+    MEASURE_FILE_PROCESSED("log.measure.file.processed")
+
+    ;
 
     private final String key;
 

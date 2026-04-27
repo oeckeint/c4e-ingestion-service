@@ -2,12 +2,10 @@ package com.com4energy.processor.service.measure.persistence;
 
 import com.com4energy.processor.model.measure.MedidaCCHEntity;
 import com.com4energy.processor.model.measure.MedidaHEntity;
-import com.com4energy.processor.model.measure.MedidaLegacyEntity;
 import com.com4energy.processor.model.measure.MedidaQHEntity;
 import com.com4energy.processor.repository.ClienteRepository;
 import com.com4energy.processor.repository.measure.MedidaCCHRepository;
 import com.com4energy.processor.repository.measure.MedidaHRepository;
-import com.com4energy.processor.repository.measure.MedidaLegacyRepository;
 import com.com4energy.processor.repository.measure.MedidaQHRepository;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +31,6 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
 
     private final MedidaHRepository medidaHRepository;
     private final MedidaQHRepository medidaQHRepository;
-    private final MedidaLegacyRepository medidaLegacyRepository;
     private final MedidaCCHRepository medidaCCHRepository;
     private final ClienteRepository clienteRepository;
 
@@ -53,8 +50,7 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
 
         List<MedidaHEntity> p1Batch = new ArrayList<>();
         List<MedidaQHEntity> p2Batch = new ArrayList<>();
-        List<MedidaLegacyEntity> f5Batch = new ArrayList<>();
-        List<MedidaCCHEntity> p5Batch = new ArrayList<>();
+        List<MedidaCCHEntity> cchBatch = new ArrayList<>();
 
         int skipped = 0;
         int persisted = 0;
@@ -63,14 +59,9 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
             for (MeasureRecord measureRecord : command.measureRecords()) {
                 ClienteResolution resolution = resolveClient(measureRecord.cups(), clientCache);
                 boolean hasInvalidClient = !resolution.valid();
-                boolean skipLegacyByTariff = measureRecord instanceof MeasureRecord.Legacy
-                        && !hasInvalidClient
-                        && is20TdTariff(resolution.tarifa());
 
                 if (hasInvalidClient) {
                     errors.add(resolution.errorMessage());
-                } else if (skipLegacyByTariff) {
-                    skipped++;
                 } else {
                     if (measureRecord instanceof MeasureRecord.Hourly hourly) {
                         MedidaHEntity entity = toMedidaH(hourly, resolution.clientId());
@@ -80,25 +71,21 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
                         MedidaQHEntity entity = toMedidaQH(quarterHourly, resolution.clientId());
                         context.registerSource(entity, measureRecord);
                         p2Batch.add(entity);
-                    } else if (measureRecord instanceof MeasureRecord.Legacy legacy) {
-                        MedidaLegacyEntity entity = toMedidaLegacy(legacy, resolution.clientId());
-                        context.registerSource(entity, measureRecord);
-                        f5Batch.add(entity);
                     } else if (measureRecord instanceof MeasureRecord.Cch cch) {
                         MedidaCCHEntity entity = toMedidaCch(cch, resolution.clientId());
                         context.registerSource(entity, measureRecord);
-                        p5Batch.add(entity);
+                        cchBatch.add(entity);
                     }
 
                     // Persist in batches to optimize performance while maintaining transactional integrity
-                    if (p1Batch.size() + p2Batch.size() + f5Batch.size() + p5Batch.size() >= DEFAULT_BATCH_SIZE) {
-                        persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
+                    if (p1Batch.size() + p2Batch.size() + cchBatch.size() >= DEFAULT_BATCH_SIZE) {
+                        persisted += flushBatches(p1Batch, p2Batch, cchBatch);
                     }
                 }
             }
 
             // Flush any remaining records
-            persisted += flushBatches(p1Batch, p2Batch, f5Batch, p5Batch);
+            persisted += flushBatches(p1Batch, p2Batch, cchBatch);
 
             return new MeasurePersistenceContracts.MeasurePersistenceResult(
                     persisted,
@@ -124,26 +111,21 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
     private int flushBatches(
             List<MedidaHEntity> p1Batch,
             List<MedidaQHEntity> p2Batch,
-            List<MedidaLegacyEntity> f5Batch,
-            List<MedidaCCHEntity> p5Batch
+            List<MedidaCCHEntity> cchBatch
     ) {
         int persistedCount = 0;
 
         if (!p1Batch.isEmpty()) {
-            persistedCount += flushWithBinarySplit(p1Batch, medidaHRepository, EntityType.P1);
+            persistedCount += flushWithBinarySplit(p1Batch, medidaHRepository, EntityType.P1_H);
             p1Batch.clear();
         }
         if (!p2Batch.isEmpty()) {
-            persistedCount += flushWithBinarySplit(p2Batch, medidaQHRepository, EntityType.P2);
+            persistedCount += flushWithBinarySplit(p2Batch, medidaQHRepository, EntityType.P2_QH);
             p2Batch.clear();
         }
-        if (!f5Batch.isEmpty()) {
-            persistedCount += flushWithBinarySplit(f5Batch, medidaLegacyRepository, EntityType.F5);
-            f5Batch.clear();
-        }
-        if (!p5Batch.isEmpty()) {
-            persistedCount += flushWithBinarySplit(p5Batch, medidaCCHRepository, EntityType.P5);
-            p5Batch.clear();
+        if (!cchBatch.isEmpty()) {
+            persistedCount += flushWithBinarySplit(cchBatch, medidaCCHRepository, EntityType.F5_CCH);
+            cchBatch.clear();
         }
 
         return persistedCount;
@@ -235,7 +217,7 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
     }
 
     enum EntityType {
-        P1, P2, F5, P5
+        P1_H, P2_QH, F5_CCH
     }
 
     /**
@@ -291,10 +273,6 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
             }
             return ClienteResolution.success(client.getId(), client.getTarifa());
         });
-    }
-
-    private boolean is20TdTariff(String tarifa) {
-        return tarifa != null && "20TD".equalsIgnoreCase(tarifa.trim());
     }
 
     private MedidaHEntity toMedidaH(MeasureRecord.Hourly measure, Long clientId) {
@@ -354,26 +332,6 @@ public class JpaMeasurePersistenceAdapter implements MeasurePersistenceContracts
                 .metodObt(measure.metodObt())
                 .temporal(measure.temporal())
                 .origen(measure.origen())
-                .createdOn(now)
-                .createdBy(SYSTEM_USER)
-                .build();
-    }
-
-    private MedidaLegacyEntity toMedidaLegacy(MeasureRecord.Legacy measure, Long clientId) {
-        LocalDateTime now = LocalDateTime.now();
-        return MedidaLegacyEntity.builder()
-                .clienteId(clientId)
-                .fecha(measure.timestamp())
-                .banderaInvVer(measure.banderaInvVer())
-                .ae1(measure.ae1())
-                .as1(measure.as1())
-                .rq1(measure.rq1())
-                .rq2(measure.rq2())
-                .rq3(measure.rq3())
-                .rq4(measure.rq4())
-                .metodObt(measure.metodObt())
-                .indicFirmez(measure.indicFirmez())
-                .codigoFactura(measure.codigoFactura())
                 .createdOn(now)
                 .createdBy(SYSTEM_USER)
                 .build();

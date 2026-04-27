@@ -106,7 +106,8 @@ public class FileScannerService {
         try {
             MultipartFile multipartFile = PathMultipartFile.fromPath(lockedFile);
             FileBatchResult batchResult = fileUploadOrchestratorService.processFiles(new MultipartFile[]{multipartFile}, FileOrigin.JOB);
-            log.info(Messages.format(LogsCommonMessageKey.SCANNER_CLASSIFIED_FILE, lockedFile.getFileName(), batchResult.processed(), batchResult.successCount(), batchResult.errors(), batchResult.alreadyExistsCount()));
+            log.info(Messages.format(LogsCommonMessageKey.SCANNER_CLASSIFIED_FILE,
+                    lockedFile.getFileName(), batchResult.processed(), batchResult.successCount(), batchResult.errors(), batchResult.alreadyExistsCount()));
             if (!fileStorageUtil.deleteIfExists(lockedFile)) {
                 log.warn(Messages.format(LogsCommonMessageKey.COULD_NOT_DELETE_CLAIMED_FILE, lockedFile));
             }

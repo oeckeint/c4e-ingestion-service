@@ -2,12 +2,10 @@ package com.com4energy.processor.service.measure.persistence;
 
 import com.com4energy.processor.model.measure.MedidaCCHEntity;
 import com.com4energy.processor.model.measure.MedidaHEntity;
-import com.com4energy.processor.model.measure.MedidaLegacyEntity;
 import com.com4energy.processor.model.measure.MedidaQHEntity;
 import com.com4energy.processor.repository.ClienteRepository;
 import com.com4energy.processor.repository.measure.MedidaCCHRepository;
 import com.com4energy.processor.repository.measure.MedidaHRepository;
-import com.com4energy.processor.repository.measure.MedidaLegacyRepository;
 import com.com4energy.processor.repository.measure.MedidaQHRepository;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import org.junit.jupiter.api.Test;
@@ -37,7 +35,6 @@ class JpaMeasurePersistenceAdapterTest {
     void persistReturnsErrorWhenClientNotFound() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -46,7 +43,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
@@ -66,7 +62,6 @@ class JpaMeasurePersistenceAdapterTest {
 
         verify(medidaHRepository, never()).saveAll(anyList());
         verify(medidaQHRepository, never()).saveAll(anyList());
-        verify(medidaLegacyRepository, never()).saveAll(anyList());
         verify(medidaCCHRepository, never()).saveAll(anyList());
     }
 
@@ -74,7 +69,6 @@ class JpaMeasurePersistenceAdapterTest {
     void persistReturnsErrorWhenClientIsDuplicatedForCups() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -84,7 +78,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
@@ -104,15 +97,13 @@ class JpaMeasurePersistenceAdapterTest {
 
         verify(medidaHRepository, never()).saveAll(anyList());
         verify(medidaQHRepository, never()).saveAll(anyList());
-        verify(medidaLegacyRepository, never()).saveAll(anyList());
         verify(medidaCCHRepository, never()).saveAll(anyList());
     }
 
     @Test
-    void persistSkipsLegacyWhenClientTariffIs20Td() {
+    void persistRoutesF5AsCch() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -121,7 +112,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
@@ -130,25 +120,23 @@ class JpaMeasurePersistenceAdapterTest {
                 new MeasurePersistenceContracts.PersistMeasuresCommand(
                         3L,
                         "F5D_0031_0894_20250311.0",
-                        List.of(legacy("ES0003"))
+                        List.of(cchFromF5("ES0003"))
                 )
         );
 
-        assertEquals(0, result.persistedCount());
+        assertEquals(1, result.persistedCount());
         assertEquals(0, result.errorCount());
-        assertEquals(1, result.skippedCount());
+        assertEquals(0, result.skippedCount());
 
-        verify(medidaLegacyRepository, never()).saveAll(anyList());
+        verify(medidaCCHRepository).saveAll(anyList());
         verify(medidaHRepository, never()).saveAll(anyList());
         verify(medidaQHRepository, never()).saveAll(anyList());
-        verify(medidaCCHRepository, never()).saveAll(anyList());
     }
 
     @Test
     void persistRoutesEachMeasureTypeToItsRepository() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -160,14 +148,13 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
 
         MeasureRecord.Hourly hourly = hourly("ES0101");
         MeasureRecord.QuarterHourly quarterHourly = quarterHourly("ES0102");
-        MeasureRecord.Legacy legacy = legacy("ES0103");
+        MeasureRecord.Cch f5AsCch = cchFromF5("ES0103");
         MeasureRecord.Cch cch = cch("ES0104");
 
         MeasurePersistenceContracts.MeasurePersistenceResult result = adapter.persist(
@@ -177,7 +164,7 @@ class JpaMeasurePersistenceAdapterTest {
                         List.of(
                                 hourly,
                                 quarterHourly,
-                                legacy,
+                                f5AsCch,
                                 cch
                         )
                 )
@@ -189,18 +176,15 @@ class JpaMeasurePersistenceAdapterTest {
 
         verify(medidaHRepository).saveAll(anyList());
         verify(medidaQHRepository).saveAll(anyList());
-        verify(medidaLegacyRepository).saveAll(anyList());
         verify(medidaCCHRepository).saveAll(anyList());
 
         List<MedidaHEntity> hEntities = captureSavedEntities(medidaHRepository);
         List<MedidaQHEntity> qhEntities = captureSavedEntities(medidaQHRepository);
-        List<MedidaLegacyEntity> legacyEntities = captureSavedEntities(medidaLegacyRepository);
         List<MedidaCCHEntity> cchEntities = captureSavedEntities(medidaCCHRepository);
 
         assertEquals(1, hEntities.size());
         assertEquals(1, qhEntities.size());
-        assertEquals(1, legacyEntities.size());
-        assertEquals(1, cchEntities.size());
+        assertEquals(2, cchEntities.size());
 
         MedidaHEntity hEntity = hEntities.get(0);
         assertEquals(21L, hEntity.getClienteId());
@@ -220,21 +204,18 @@ class JpaMeasurePersistenceAdapterTest {
         assertEquals("SYSTEM", qhEntity.getCreatedBy());
         assertNotNull(qhEntity.getCreatedOn());
 
-        MedidaLegacyEntity legacyEntity = legacyEntities.get(0);
-        assertEquals(23L, legacyEntity.getClienteId());
-        assertEquals(legacy.timestamp(), legacyEntity.getFecha());
-        assertEquals(legacy.ae1(), legacyEntity.getAe1());
-        assertEquals(legacy.codigoFactura(), legacyEntity.getCodigoFactura());
-        assertEquals("SYSTEM", legacyEntity.getCreatedBy());
-        assertNotNull(legacyEntity.getCreatedOn());
-
-        MedidaCCHEntity cchEntity = cchEntities.get(0);
-        assertEquals(24L, cchEntity.getClienteId());
-        assertEquals(cch.timestamp(), cchEntity.getFecha());
-        assertEquals(cch.actent(), cchEntity.getActent());
-        assertEquals(cch.metod(), cchEntity.getMetod());
-        assertEquals("SYSTEM", cchEntity.getCreatedBy());
-        assertNotNull(cchEntity.getCreatedOn());
+        assertTrue(cchEntities.stream().anyMatch(entity ->
+                entity.getClienteId().equals(23L)
+                        && entity.getFecha().equals(f5AsCch.timestamp())
+                        && entity.getActent().equals(f5AsCch.actent())
+                        && entity.getMetod().equals(f5AsCch.metod())
+        ));
+        assertTrue(cchEntities.stream().anyMatch(entity ->
+                entity.getClienteId().equals(24L)
+                        && entity.getFecha().equals(cch.timestamp())
+                        && entity.getActent().equals(cch.actent())
+                        && entity.getMetod().equals(cch.metod())
+        ));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -316,20 +297,13 @@ class JpaMeasurePersistenceAdapterTest {
         );
     }
 
-    private MeasureRecord.Legacy legacy(String cups) {
-        return new MeasureRecord.Legacy(
+    private MeasureRecord.Cch cchFromF5(String cups) {
+        return new MeasureRecord.Cch(
                 cups,
                 LocalDateTime.of(2025, 1, 1, 0, 0),
                 0,
                 10,
-                0,
-                0,
-                0,
-                0,
-                0,
                 1,
-                1,
-                "171251N029990602",
                 cups + ";2025/01/01 00:00;..."
         );
     }
@@ -349,7 +323,6 @@ class JpaMeasurePersistenceAdapterTest {
     void persistFlushesRecordsInBatchesOfOneThousand() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -359,7 +332,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
@@ -401,7 +373,6 @@ class JpaMeasurePersistenceAdapterTest {
     void persistBinarySplitsWhenSaveAllFails() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -421,7 +392,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
@@ -440,7 +410,6 @@ class JpaMeasurePersistenceAdapterTest {
     void persistReturnsFailedRecordsWhenBinarySplitIsolatesInvalidRecord() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -463,7 +432,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );
@@ -483,7 +451,6 @@ class JpaMeasurePersistenceAdapterTest {
     void persistReusesClientLookupForRepeatedCups() {
         MedidaHRepository medidaHRepository = mock(MedidaHRepository.class);
         MedidaQHRepository medidaQHRepository = mock(MedidaQHRepository.class);
-        MedidaLegacyRepository medidaLegacyRepository = mock(MedidaLegacyRepository.class);
         MedidaCCHRepository medidaCCHRepository = mock(MedidaCCHRepository.class);
         ClienteRepository clienteRepository = mock(ClienteRepository.class);
 
@@ -492,7 +459,6 @@ class JpaMeasurePersistenceAdapterTest {
         JpaMeasurePersistenceAdapter adapter = new JpaMeasurePersistenceAdapter(
                 medidaHRepository,
                 medidaQHRepository,
-                medidaLegacyRepository,
                 medidaCCHRepository,
                 clienteRepository
         );

@@ -1,5 +1,7 @@
 package com.com4energy.processor.service.processing;
 
+import com.com4energy.i18n.core.Messages;
+import com.com4energy.processor.common.LogsCommonMessageKey;
 import com.com4energy.processor.model.FailureReason;
 import com.com4energy.processor.model.FileRecord;
 import com.com4energy.processor.model.FileType;
@@ -26,9 +28,9 @@ import java.util.Set;
 public class MeasureFileTypeProcessor implements FileTypeProcessor {
 
     private static final Set<FileType> SUPPORTED_TYPES = Set.of(
-            FileType.MEDIDA_QH_P1,
-            FileType.MEDIDA_QH_P2
-            // F5 y P5 deshabilitados de momento - cliente aún por definir
+            FileType.MEDIDA_H_P1,
+            FileType.MEDIDA_QH_P2,
+            FileType.MEDIDA_CCH_F5
     );
 
     private final MeasureFileParserService measureFileParserService;
@@ -57,7 +59,9 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
     public FileTypeProcessingResult process(FileRecord fileRecord, Path processingPath) {
         long parseStartedAtNanos = System.nanoTime();
         try {
-            MeasureParseResult result = measureFileParserService.parse(processingPath);
+            // Use the FileType from database (already classified at file ingestion)
+            // Don't recalculate it - the job just reads and processes based on pre-classified type
+            MeasureParseResult result = measureFileParserService.parse(processingPath, fileRecord.getType());
             long parseDurationMs = elapsedMillis(parseStartedAtNanos);
             fileRecord.setParseDurationMs(parseDurationMs);
 
@@ -114,10 +118,11 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
             boolean hasDefects = hasValidationOrPersistenceErrors || hasQuarantineRecords;
             List<FileTypeProcessingResult.DeferredOutboxEvent> deferredOutboxEvents = new ArrayList<>();
             long totalProcessingMs = elapsedMillis(parseStartedAtNanos);
-            String measureType = fileRecord.getType() != null
-                    ? fileRecord.getType().name()
-                    : result.metadata().kind().name();
-            String destinationStore = resolveDestinationStore(result.metadata().kind().name());
+            FileType resolvedMeasureType = fileRecord.getType() != null
+                    ? fileRecord.getType()
+                    : result.metadata().kind();
+            String measureType = resolvedMeasureType.name();
+            String destinationStore = resolveDestinationStore(resolvedMeasureType);
 
             fileRecord.setProcessedRecords(persistedMeasures);
             fileRecord.setDefectedRecords(defectCount);
@@ -131,8 +136,8 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
             }
 
 
-            log.info(
-                    "event=measure_file_processed fileId={} filename='{}' measureType={} total={} persisted={} defects={} skipped={} targetTable={} totalMs={} parseMs={} persistMs={}",
+            log.info(Messages.format(
+                    LogsCommonMessageKey.MEASURE_FILE_PROCESSED,
                     fileRecord.getId(),
                     fileRecord.getOriginalFilename(),
                     measureType,
@@ -144,7 +149,7 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
                     totalProcessingMs,
                     parseDurationMs,
                     persistDurationMs
-            );
+            ));
 
             // Cuarentena: registros aislados por binary split — flujo EXCEPCIONAL
             // Se reportan por separado (.sge_quarantine.jsonl) y se publican al outbox
@@ -152,22 +157,16 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
                 buildQuarantineDeferredEvent(fileRecord, persistenceResult).ifPresent(deferredOutboxEvents::add);
             }
 
-            // Errores de validación/persistencia — flujo NORMAL con incidencias
-            if (hasValidationOrPersistenceErrors) {
-                int totalIncidents = validationErrorCount + persistenceResult.errorCount();
-                Optional<Path> defectPath = measureDefectReportService.writeValidationAndPersistenceDefectReport(
-                        fileRecord.getOriginalFilename(),
-                        validationResult.errors(),
-                        persistenceResult.errors()
-                );
-                String comment = buildDefectComment(totalIncidents, defectPath);
-                deferredOutboxEvents.addAll(buildDefectReportDeferredEvents("validation", totalIncidents, defectPath));
-
-                if (persistedMeasures > 0) {
-                    fileRecord.setComment(comment);
-                    return FileTypeProcessingResult.success(deferredOutboxEvents);
-                }
-                return FileTypeProcessingResult.failed(FailureReason.INVALID_FILE_FORMAT, comment, deferredOutboxEvents);
+            Optional<FileTypeProcessingResult> defectResult = handleValidationAndPersistenceErrors(
+                    fileRecord,
+                    validationResult,
+                    persistenceResult,
+                    hasValidationOrPersistenceErrors,
+                    persistedMeasures,
+                    deferredOutboxEvents
+            );
+            if (defectResult.isPresent()) {
+                return defectResult.get();
             }
 
             if (hasQuarantineRecords && persistedMeasures == 0) {
@@ -187,12 +186,15 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
         return (System.nanoTime() - startedAtNanos) / 1_000_000;
     }
 
-    private String resolveDestinationStore(String measureKind) {
-        return switch (measureKind) {
-            case "P1" -> "medida_h";
-            case "P2" -> "medida_qh";
-            case "F5" -> "medida_legacy";
-            case "P5" -> "medida_cch";
+    private String resolveDestinationStore(FileType measureType) {
+        if (measureType == null) {
+            return "desconocido";
+        }
+
+        return switch (measureType) {
+            case MEDIDA_H_P1 -> "medida_h";
+            case MEDIDA_QH_P2 -> "medida_qh";
+            case MEDIDA_CCH_F5 -> "medida_cch";
             default -> "desconocido";
         };
     }
@@ -252,6 +254,35 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
         );
 
         return quarantinePath.map(path -> FileTypeProcessingResult.DeferredOutboxEvent.persistenceQuarantine(failedCount, path));
+    }
+
+    private Optional<FileTypeProcessingResult> handleValidationAndPersistenceErrors(
+            FileRecord fileRecord,
+            MeasureRecordValidationResult validationResult,
+            MeasurePersistenceContracts.MeasurePersistenceResult persistenceResult,
+            boolean hasValidationOrPersistenceErrors,
+            int persistedMeasures,
+            List<FileTypeProcessingResult.DeferredOutboxEvent> deferredOutboxEvents
+    ) {
+        if (!hasValidationOrPersistenceErrors) {
+            return Optional.empty();
+        }
+
+        int totalIncidents = validationResult.errorCount() + persistenceResult.errorCount();
+        Optional<Path> defectPath = measureDefectReportService.writeValidationAndPersistenceDefectReport(
+                fileRecord.getOriginalFilename(),
+                validationResult.errors(),
+                persistenceResult.errors()
+        );
+        String comment = buildDefectComment(totalIncidents, defectPath);
+        deferredOutboxEvents.addAll(buildDefectReportDeferredEvents("validation", totalIncidents, defectPath));
+
+        if (persistedMeasures > 0) {
+            fileRecord.setComment(comment);
+            return Optional.of(FileTypeProcessingResult.success(deferredOutboxEvents));
+        }
+
+        return Optional.of(FileTypeProcessingResult.failed(FailureReason.INVALID_FILE_FORMAT, comment, deferredOutboxEvents));
     }
 
 }

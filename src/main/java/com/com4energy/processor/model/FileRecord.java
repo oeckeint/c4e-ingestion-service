@@ -127,10 +127,9 @@ public class FileRecord extends com.com4energy.processor.model.audit.Auditable {
 
         String prefix = tokens[0].substring(0, 2).toLowerCase(Locale.ROOT);
         return switch (prefix) {
-            case "p1" -> FileType.MEDIDA_QH_P1;
+            case "p1" -> FileType.MEDIDA_H_P1;
             case "p2" -> FileType.MEDIDA_QH_P2;
-            case "f5" -> FileType.MEDIDA_QH_F5;
-            case "p5" -> FileType.MEDIDA_QH_P5;
+            case "f5" -> FileType.MEDIDA_CCH_F5;
             default -> FileType.UNKNOWN;
         };
     }

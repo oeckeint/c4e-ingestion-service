@@ -1,5 +1,6 @@
 package com.com4energy.processor.service.measure.validation;
 
+import com.com4energy.processor.common.MeasureFieldNames;
 import com.com4energy.processor.service.measure.MeasureRecord;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -9,9 +10,6 @@ import java.util.Optional;
 @Component
 @Order(50)
 public class NonNegativeMagnitudesRecordValidator implements MeasureRecordValidator {
-
-    private static final String FIELD_ACTENT = "actent";
-    private static final String FIELD_BANDERA_INV_VER = "banderaInvVer";
 
     @Override
     public String brokenRule() {
@@ -25,72 +23,62 @@ public class NonNegativeMagnitudesRecordValidator implements MeasureRecordValida
 
     @Override
     public Optional<String> validate(MeasureRecord measureRecord) {
-        if (measureRecord instanceof MeasureRecord.Hourly hourly) {
-            return firstNegative(
-                    value(hourly.actent(), FIELD_ACTENT),
-                    value(hourly.qactent(), "qactent"),
-                    value(hourly.actsal(), "actsal"),
-                    value(hourly.qactsal(), "qactsal"),
-                    value(hourly.rQ1(), "rQ1"),
-                    value(hourly.qrQ1(), "qrQ1"),
-                    value(hourly.rQ2(), "rQ2"),
-                    value(hourly.qrQ2(), "qrQ2"),
-                    value(hourly.rQ3(), "rQ3"),
-                    value(hourly.qrQ3(), "qrQ3"),
-                    value(hourly.rQ4(), "rQ4"),
-                    value(hourly.qrQ4(), "qrQ4"),
-                    value(hourly.medres1(), "medres1"),
-                    value(hourly.qmedres1(), "qmedres1"),
-                    value(hourly.medres2(), "medres2"),
-                    value(hourly.qmedres2(), "qmedres2")
-            );
-        }
+        return switch (measureRecord) {
+            case MeasureRecord.Hourly hourly -> firstNegative(extractP1Fields(hourly));
+            case MeasureRecord.QuarterHourly quarterHourly -> firstNegative(extractP2Fields(quarterHourly));
+            case MeasureRecord.Cch cch -> firstNegative(extractCchFields(cch));
+        };
+    }
 
-        if (measureRecord instanceof MeasureRecord.QuarterHourly quarterHourly) {
-            return firstNegative(
-                    value(quarterHourly.banderaInvVer(), FIELD_BANDERA_INV_VER),
-                    value(quarterHourly.actent(), FIELD_ACTENT),
-                    value(quarterHourly.qactent(), "qactent"),
-                    value(quarterHourly.actsal(), "actsal"),
-                    value(quarterHourly.qactsal(), "qactsal"),
-                    value(quarterHourly.rQ1(), "rQ1"),
-                    value(quarterHourly.qrQ1(), "qrQ1"),
-                    value(quarterHourly.rQ2(), "rQ2"),
-                    value(quarterHourly.qrQ2(), "qrQ2"),
-                    value(quarterHourly.rQ3(), "rQ3"),
-                    value(quarterHourly.qrQ3(), "qrQ3"),
-                    value(quarterHourly.rQ4(), "rQ4"),
-                    value(quarterHourly.qrQ4(), "qrQ4"),
-                    value(quarterHourly.medres1(), "medres1"),
-                    value(quarterHourly.qmedres1(), "qmedres1"),
-                    value(quarterHourly.medres2(), "medres2"),
-                    value(quarterHourly.qmedres2(), "qmedres2")
-            );
-        }
+    private NumericField[] extractP1Fields(MeasureRecord.Hourly hourly) {
+        return new NumericField[]{
+            value(hourly.actent(), MeasureFieldNames.ACTENT),
+            value(hourly.qactent(), MeasureFieldNames.QACTENT),
+            value(hourly.actsal(), MeasureFieldNames.ACTSAL),
+            value(hourly.qactsal(), MeasureFieldNames.QACTSAL),
+            value(hourly.rQ1(), MeasureFieldNames.RQ1),
+            value(hourly.qrQ1(), MeasureFieldNames.QRQ1),
+            value(hourly.rQ2(), MeasureFieldNames.RQ2),
+            value(hourly.qrQ2(), MeasureFieldNames.QRQ2),
+            value(hourly.rQ3(), MeasureFieldNames.RQ3),
+            value(hourly.qrQ3(), MeasureFieldNames.QRQ3),
+            value(hourly.rQ4(), MeasureFieldNames.RQ4),
+            value(hourly.qrQ4(), MeasureFieldNames.QRQ4),
+            value(hourly.medres1(), MeasureFieldNames.MEDRES1),
+            value(hourly.qmedres1(), MeasureFieldNames.QMEDRES1),
+            value(hourly.medres2(), MeasureFieldNames.MEDRES2),
+            value(hourly.qmedres2(), MeasureFieldNames.QMEDRES2)
+        };
+    }
 
-        if (measureRecord instanceof MeasureRecord.Legacy legacy) {
-            return firstNegative(
-                    value(legacy.banderaInvVer(), FIELD_BANDERA_INV_VER),
-                    value(legacy.ae1(), "ae1"),
-                    value(legacy.as1(), "as1"),
-                    value(legacy.rq1(), "rq1"),
-                    value(legacy.rq2(), "rq2"),
-                    value(legacy.rq3(), "rq3"),
-                    value(legacy.rq4(), "rq4"),
-                    value(legacy.metodObt(), "metodObt"),
-                    value(legacy.indicFirmez(), "indicFirmez")
-            );
-        }
+    private NumericField[] extractP2Fields(MeasureRecord.QuarterHourly quarterHourly) {
+        return new NumericField[]{
+            value(quarterHourly.banderaInvVer(), MeasureFieldNames.P2_BANDERA_INV_VER),
+            value(quarterHourly.actent(), MeasureFieldNames.ACTENT),
+            value(quarterHourly.qactent(), MeasureFieldNames.QACTENT),
+            value(quarterHourly.actsal(), MeasureFieldNames.ACTSAL),
+            value(quarterHourly.qactsal(), MeasureFieldNames.QACTSAL),
+            value(quarterHourly.rQ1(), MeasureFieldNames.RQ1),
+            value(quarterHourly.qrQ1(), MeasureFieldNames.QRQ1),
+            value(quarterHourly.rQ2(), MeasureFieldNames.RQ2),
+            value(quarterHourly.qrQ2(), MeasureFieldNames.QRQ2),
+            value(quarterHourly.rQ3(), MeasureFieldNames.RQ3),
+            value(quarterHourly.qrQ3(), MeasureFieldNames.QRQ3),
+            value(quarterHourly.rQ4(), MeasureFieldNames.RQ4),
+            value(quarterHourly.qrQ4(), MeasureFieldNames.QRQ4),
+            value(quarterHourly.medres1(), MeasureFieldNames.MEDRES1),
+            value(quarterHourly.qmedres1(), MeasureFieldNames.QMEDRES1),
+            value(quarterHourly.medres2(), MeasureFieldNames.MEDRES2),
+            value(quarterHourly.qmedres2(), MeasureFieldNames.QMEDRES2)
+        };
+    }
 
-        if (measureRecord instanceof MeasureRecord.Cch cch) {
-            return firstNegative(
-                    value(cch.banderaInvVer(), FIELD_BANDERA_INV_VER),
-                    value(cch.actent(), FIELD_ACTENT),
-                    value(cch.metod(), "metod")
-            );
-        }
-
-        return Optional.empty();
+    private NumericField[] extractCchFields(MeasureRecord.Cch cch) {
+        return new NumericField[]{
+            value(cch.banderaInvVer(), MeasureFieldNames.CCH_BANDERA_INV_VER),
+            value(cch.actent(), MeasureFieldNames.CCH_ACTENT),
+            value(cch.metod(), MeasureFieldNames.CCH_METOD)
+        };
     }
 
     private Optional<String> firstNegative(NumericField... fields) {
