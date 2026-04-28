@@ -1,13 +1,17 @@
 package com.com4energy.processor.service.measure.validation;
 
 import com.com4energy.processor.service.measure.MeasureRecord;
+import lombok.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 public class MeasureRecordValidationChain {
+
+    private static final int LINE_NUMBER_OFFSET = 1;
 
     private final List<MeasureRecordValidator> validators;
 
@@ -15,34 +19,48 @@ public class MeasureRecordValidationChain {
         this.validators = List.copyOf(validators);
     }
 
-    public MeasureRecordValidationResult validate(List<MeasureRecord> records, ValidationMode mode) {
+    public MeasureRecordValidationResult validate(@NonNull List<MeasureRecord> records, ValidationMode mode) {
         List<MeasureRecord> validRecords = new ArrayList<>();
         List<MeasureRecordValidationError> errors = new ArrayList<>();
 
-        for (int i = 0; i < records.size(); i++) {
-            MeasureRecord record = records.get(i);
-            boolean recordValid = true;
-
-            for (MeasureRecordValidator validator : validators) {
-                if (!validator.supports(record)) {
+        validators.forEach(validator -> validator.beforeBatch(records));
+        try {
+            for (int i = 0; i < records.size(); i++) {
+                MeasureRecord measureRecord = records.get(i);
+                Optional<MeasureRecordValidationError> firstError = firstValidationError(measureRecord, i + LINE_NUMBER_OFFSET);
+                if (firstError.isEmpty()) {
+                    validRecords.add(measureRecord);
                     continue;
                 }
-                java.util.Optional<String> validationError = validator.validate(record);
-                if (validationError.isPresent()) {
-                    errors.add(new MeasureRecordValidationError(i + 1, validator.brokenRule(), validationError.get(), record.rawLine()));
-                    recordValid = false;
-                    if (mode == ValidationMode.FAIL_FAST) {
-                        return new MeasureRecordValidationResult(validRecords, errors);
-                    }
-                    break;
+
+                errors.add(firstError.get());
+                if (mode == ValidationMode.FAIL_FAST) {
+                    return new MeasureRecordValidationResult(validRecords, errors);
                 }
             }
-
-            if (recordValid) {
-                validRecords.add(record);
-            }
+        } finally {
+            validators.forEach(MeasureRecordValidator::afterBatch);
         }
 
         return new MeasureRecordValidationResult(validRecords, errors);
+    }
+
+    private Optional<MeasureRecordValidationError> firstValidationError(MeasureRecord measureRecord, int lineNumber) {
+        for (MeasureRecordValidator validator : validators) {
+            if (!validator.supports(measureRecord)) {
+                continue;
+            }
+
+            Optional<String> validationError = validator.validate(measureRecord);
+            if (validationError.isPresent()) {
+                return Optional.of(new MeasureRecordValidationError(
+                        lineNumber,
+                        validator.brokenRule(),
+                        validationError.get(),
+                        measureRecord.rawLine()
+                ));
+            }
+        }
+        return Optional.empty();
     }
 }

@@ -67,6 +67,51 @@ class MeasureRecordValidationChainTest {
         assertTrue(result.errors().get(0).message().contains("Valor negativo"));
     }
 
+    @Test
+    void invokesBatchLifecycleHooksOnValidators() {
+        TrackingValidator validator = new TrackingValidator();
+        MeasureRecordValidationChain chain = new MeasureRecordValidationChain(List.of(validator));
+
+        MeasureRecordValidationResult result = chain.validate(List.of(validHourly(), validHourly()), ValidationMode.TOLERANT);
+
+        assertEquals(2, result.validRecords().size());
+        assertEquals(1, validator.beforeBatchCalls);
+        assertEquals(1, validator.afterBatchCalls);
+        assertEquals(2, validator.validateCalls);
+    }
+
+    private static final class TrackingValidator implements MeasureRecordValidator {
+        private int beforeBatchCalls;
+        private int afterBatchCalls;
+        private int validateCalls;
+
+        @Override
+        public String brokenRule() {
+            return "TRACKING";
+        }
+
+        @Override
+        public boolean supports(MeasureRecord record) {
+            return true;
+        }
+
+        @Override
+        public java.util.Optional<String> validate(MeasureRecord record) {
+            validateCalls++;
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public void beforeBatch(List<MeasureRecord> records) {
+            beforeBatchCalls++;
+        }
+
+        @Override
+        public void afterBatch() {
+            afterBatchCalls++;
+        }
+    }
+
     private MeasureRecord.Hourly validHourly() {
         return new MeasureRecord.Hourly(
                 "ES123456789012345678",

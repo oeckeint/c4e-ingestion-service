@@ -13,6 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ClientExistsRecordValidatorTest {
@@ -70,6 +72,28 @@ class ClientExistsRecordValidatorTest {
 
         assertTrue(result.isEmpty());
         assertEquals("CLIENT_EXISTS", validator.brokenRule());
+    }
+
+    @Test
+    void reusesLookupForRepeatedCupsWithinSameBatch() {
+        ClienteRepository clienteRepository = mock(ClienteRepository.class);
+        ClientExistsRecordValidator validator = new ClientExistsRecordValidator(clienteRepository);
+
+        when(clienteRepository.findLookupByCups(eq("ES123456789012345678"), any(Pageable.class)))
+                .thenReturn(List.of(client(1L, null)));
+
+        MeasureRecord.Hourly first = hourly("ES123456789012345678");
+        MeasureRecord.Hourly second = hourly("ES123456789012345678");
+
+        validator.beforeBatch(List.of(first, second));
+        try {
+            assertTrue(validator.validate(first).isEmpty());
+            assertTrue(validator.validate(second).isEmpty());
+        } finally {
+            validator.afterBatch();
+        }
+
+        verify(clienteRepository, times(1)).findLookupByCups(eq("ES123456789012345678"), any(Pageable.class));
     }
 
     private MeasureRecord.Hourly hourly(String cups) {
