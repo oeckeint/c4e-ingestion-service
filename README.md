@@ -10,6 +10,20 @@ Verificado en local sobre el estado actual del repo:
 - `./mvnw verify` pasa (incluyendo checkstyle).
 - Hay cambios locales sin consolidar en `git status` (algunos parecen prototipos no conectados al flujo principal).
 
+## Documentacion recomendada
+
+- Vista cliente: `docs/CLIENT_IMPLEMENTATION_OVERVIEW.md`
+- Notas tecnicas internas: `docs/DEV_NOTES_INGESTION_IMPLEMENTATION.md`
+
+## Reporte de defectos de medidas
+
+Cuando un archivo de medidas falla por parseo/validacion/persistencia, se generan reportes en:
+
+- `failed/defects/<archivo_original>.sge_defect.jsonl`
+- `failed/defects/<archivo_original>.sge_defect.csv`
+
+El CSV esta orientado a lectura operativa/cliente y el JSONL a trazabilidad tecnica.
+
 ## Que funciona hoy
 
 - **Integracion de librerias compartidas**: usa `c4e-event-publisher` para publicar incidentes y `c4e-i18n-core` como base de i18n comun.
@@ -44,9 +58,9 @@ Verificado en local sobre el estado actual del repo:
 
 Archivo: `src/main/resources/application.yml`
 
-- Variable de entorno opcional para base path:
+- Variable de entorno requerida para base path:
   - `C4E_HOST_STORAGE_ROOT`.
-  - Si no se define, usa `/Users/jesus/Downloads/com4energy`.
+  - Ejemplo: `export C4E_HOST_STORAGE_ROOT="$HOME/Downloads/com4energy"`.
 - Paths de trabajo:
   - `c4e.upload.base-path`
   - `c4e.upload.pending-path`
@@ -56,14 +70,18 @@ Archivo: `src/main/resources/application.yml`
 - Scanner:
   - `scanner.paths[]`
   - `scanner.scan-interval-ms`
-- Retry:
-  - `file.retry-interval-ms`
+- Procesamiento de jobs:
+  - `file.processing.interval-ms` (aplica a Pending y Retry)
+  - `file.processing.batch-size`
 - Feature flags:
   - `app.feature.enabled.persist-data`
   - `app.feature.enabled.send-messages`
   - `app.feature.enabled.receive-messages`
   - `app.feature.enabled.file-scanner-job`
+  - `app.feature.enabled.file-processing-job`
   - `app.feature.enabled.file-retry-job`
+- Observabilidad:
+  - `management.endpoints.web.exposure.include=health,info,metrics,scheduledtasks`
 - Incidentes (publisher):
   - `c4e.incidents.enabled`
   - `c4e.incidents.types.validation.exchange`
@@ -79,7 +97,7 @@ sdk env
 ./mvnw spring-boot:run
 ```
 
-Override opcional de ruta base:
+Config minima de entorno antes de arrancar:
 
 ```bash
 export C4E_HOST_STORAGE_ROOT="$HOME/Downloads/com4energy"

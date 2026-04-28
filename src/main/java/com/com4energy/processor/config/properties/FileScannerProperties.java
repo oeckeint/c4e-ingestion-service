@@ -11,6 +11,9 @@ import lombok.Data;
 public class FileScannerProperties {
 
     private List<String> paths;
+    private String lockPath;
+    private long lockMaxAgeMs;
+    private long lockMaintenanceIntervalMs;
     private long scanIntervalMs;
 
 }

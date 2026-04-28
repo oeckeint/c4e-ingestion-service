@@ -1,6 +1,6 @@
 package com.com4energy.processor.job;
 
-import com.com4energy.processor.config.AppFeatureProperties;
+import com.com4energy.processor.config.FeatureFlagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -12,16 +12,14 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class FileScannerJob {
 
-    private final AppFeatureProperties appFeatureProperties;
+    private final FeatureFlagService serviceFlag;
     private final FileScannerService scannerService;
 
     @Scheduled(fixedDelayString = "#{fileScannerProperties.scanIntervalMs}")
     public void runScan() {
-        if (!appFeatureProperties.isEnabled("file-scanner-job")){
-            log.warn("FileScannerJob feature is disabled");
-            return;
+        if (serviceFlag.isFileScannerJobEnabled()) {
+            scannerService.scanAndRegisterFiles();
         }
-        scannerService.scanAndRegisterFiles();
     }
 
 }

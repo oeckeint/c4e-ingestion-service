@@ -7,5 +7,6 @@ public enum InternalServices {
     FILE_STORAGE,
     DATABASE,
     CHAIN_VALIDATION,
+    SCANNER_LOCK_MAINTENANCE,
 
 }

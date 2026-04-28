@@ -20,7 +20,7 @@ spring:
         physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
 
 server:
-  port: 8080
+  port: 8083
 
 logging:
   level:
@@ -32,7 +32,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,scheduledtasks
   endpoint:
     health:
       show-details: always
@@ -42,7 +42,7 @@ management:
 
 c4e:
   upload:
-    base-path: ${C4E_HOST_STORAGE_ROOT:/Users/jesus/Downloads/com4energy}/ingestion-service
+    base-path: ${C4E_HOST_STORAGE_ROOT}/ingestion-service
     pending-path: ${c4e.upload.base-path}/pending
     processed-path: ${c4e.upload.base-path}/processed
     processing-path: ${c4e.upload.base-path}/processing
@@ -54,10 +54,22 @@ c4e:
     max-size-bytes: 10485760
     allowed-extensions:
       - xml
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
     allowed-content-types:
       - text/xml
       - application/xml
       - application/x-xml
+      - text/plain
+      - application/octet-stream
   incidents:
     enabled: true
     types:
@@ -74,6 +86,9 @@ c4e:
 scanner:
   paths:
     - ${c4e.upload.automatic-path}
+  lock-path: ${c4e.upload.base-path}/.scanner-lock
+  lock-max-age-ms: 7200000
+  lock-maintenance-interval-ms: 300000
   scan-interval-ms: 10000
 
 processor:
@@ -81,7 +96,9 @@ processor:
     max-retries: 5
 
 file:
-  retry-interval-ms: 30000
+  processing:
+    interval-ms: 3000
+    batch-size: 10
 
 app:
   feature:
@@ -103,5 +120,7 @@ app:
       mock-file-id: false
       simulate-failure: true
       delay-processing-ms: false
-      file-scanner-job: false
-      file-retry-job: false
+      file-scanner-job: true
+      file-processing-job: true
+      file-retry-job: true
+      scanner-lock-maintenance-job: true
