@@ -15,7 +15,8 @@ public interface ClienteRepository extends JpaRepository<ClienteEntity, Long> {
     @Query("""
             select c.id as id, c.tarifa as tarifa
             from ClienteEntity c
-            where c.cups = :cups
+            where length(:cups) >= 20
+              and c.cups like concat(substring(:cups, 1, 20), '%')
             """)
     List<ClienteLookupView> findLookupByCups(@Param("cups") String cups, Pageable pageable);
 
