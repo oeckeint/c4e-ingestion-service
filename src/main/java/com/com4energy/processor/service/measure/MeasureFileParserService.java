@@ -84,7 +84,7 @@ public class MeasureFileParserService {
     }
 
     private MeasureRecord parseP1(MeasureFilenameMetadata metadata, String[] elements, String line, int lineNumber) {
-        validateExactColumnCount(metadata.originalFilename(), elements, lineNumber);
+        validateP1ColumnCount(metadata.originalFilename(), elements, lineNumber);
         ElementsCursor cursor = new ElementsCursor(elements);
         try {
             String cups = cursor.nextRaw();
@@ -238,8 +238,13 @@ public class MeasureFileParserService {
         }
     }
 
-    private void validateExactColumnCount(String fileName, String[] elements, int lineNumber) {
-        if (elements.length != EXPECTED_P1_COLUMNS) {
+    private void validateP1ColumnCount(String fileName, String[] elements, int lineNumber) {
+        int effectiveLength = elements.length;
+        while (effectiveLength > 0 && elements[effectiveLength - 1].isEmpty()) {
+            effectiveLength--;
+        }
+
+        if (effectiveLength != EXPECTED_P1_COLUMNS) {
             throw invalidColumnCount(fileName, elements, lineNumber, EXPECTED_P1_COLUMNS);
         }
     }

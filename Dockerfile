@@ -8,5 +8,5 @@ RUN mvn clean package -pl c4e-ingestion-service -am -DskipTests
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /workspace/c4e-ingestion-service/target/*.jar app.jar
-EXPOSE 8080
+EXPOSE 8083
 ENTRYPOINT ["java", "-jar", "app.jar"]

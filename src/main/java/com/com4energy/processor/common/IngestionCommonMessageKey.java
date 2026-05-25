@@ -5,6 +5,8 @@ import com.com4energy.i18n.core.MessageKey;
 public enum IngestionCommonMessageKey implements MessageKey {
 
     UPLOAD_NO_FILES_PROVIDED("ingestion.upload.no.files.provided"),
+    UPLOAD_TOO_MANY_FILES("ingestion.upload.too-many-files"),
+    UPLOAD_TOTAL_SIZE_EXCEEDED("ingestion.upload.total-size-exceeded"),
     UPLOAD_BLOCKED_RECONCILIATION_RUNNING("ingestion.upload.blocked.reconciliation.running"),
     UPLOAD_EMPTY_FILES_ARRAY_LOG("ingestion.upload.empty.files.array.log"),
     UPLOAD_BATCH_RESULT("ingestion.upload.batch.result"),

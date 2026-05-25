@@ -9,7 +9,6 @@ import java.io.StringReader;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MeasureFileParserServiceTest {
@@ -135,6 +134,46 @@ class MeasureFileParserServiceTest {
         MeasureRecord.Hourly hourly = assertInstanceOf(MeasureRecord.Hourly.class, result.records().get(0));
         assertEquals(2025, hourly.timestamp().getYear());
         assertEquals(0, hourly.timestamp().getSecond());
+    }
+
+    @Test
+    void parseP1AllowsTrailingEmptyColumnWhenLineEndsWithDelimiter() throws IOException {
+        MeasureParseResult result = service.parse(VALID_P1_FILENAME, new StringReader(
+                "ES123;1;2025/01/01 00:00:00;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0;12.0;13.0;14.0;15.0;16.0;17.0;18;19;"
+        ), FileType.MEDIDA_H_P1);
+
+        assertEquals(1, result.successCount());
+        assertEquals(0, result.errorCount());
+    }
+
+    @Test
+    void parseP1AllowsMultipleTrailingEmptyColumns() throws IOException {
+        MeasureParseResult result = service.parse(VALID_P1_FILENAME, new StringReader(
+                "ES123;1;2025/01/01 00:00:00;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0;12.0;13.0;14.0;15.0;16.0;17.0;18;19;;;"
+        ), FileType.MEDIDA_H_P1);
+
+        assertEquals(1, result.successCount());
+        assertEquals(0, result.errorCount());
+    }
+
+    @Test
+    void parseP1RejectsNonEmptyExtraColumn() throws IOException {
+        MeasureParseResult result = service.parse(VALID_P1_FILENAME, new StringReader(
+                "ES123;1;2025/01/01 00:00:00;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0;12.0;13.0;14.0;15.0;16.0;17.0;18;19;EXTRA"
+        ), FileType.MEDIDA_H_P1);
+
+        assertEquals(0, result.successCount());
+        assertEquals(1, result.errorCount());
+    }
+
+    @Test
+    void parseP1RejectsTrailingColumnWithWhitespace() throws IOException {
+        MeasureParseResult result = service.parse(VALID_P1_FILENAME, new StringReader(
+                "ES123;1;2025/01/01 00:00:00;1.0;2.0;3.0;4.0;5.0;6.0;7.0;8.0;9.0;10.0;11.0;12.0;13.0;14.0;15.0;16.0;17.0;18;19; "
+        ), FileType.MEDIDA_H_P1);
+
+        assertEquals(0, result.successCount());
+        assertEquals(1, result.errorCount());
     }
 
 }

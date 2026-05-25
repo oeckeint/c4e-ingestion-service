@@ -34,6 +34,24 @@ FileRecordRepository extends JpaRepository<FileRecord, Long> {
     @Query("SELECT f.originalFilename FROM FileRecord f WHERE f.originalFilename LIKE :pattern")
     List<String> findAllOriginalFilenamesLike(@Param("pattern") String pattern);
 
+    /**
+     * Returns true if any file in the same "family" (same base name, any extension)
+     * is currently locked (being processed), excluding the file itself.
+     *
+     * Used to defer processing of a revision when a sibling revision is already in-flight,
+     * preventing concurrent writes to the same measure records without requiring UNIQUE constraints.
+     */
+    @Query("""
+            SELECT COUNT(f) > 0 FROM FileRecord f
+            WHERE f.originalFilename LIKE :familyPattern
+              AND f.id <> :excludeId
+              AND f.locked = true
+            """)
+    boolean existsFamilyFileBeingProcessed(
+            @Param("familyPattern") String familyPattern,
+            @Param("excludeId") Long excludeId
+    );
+
     Optional<FileRecord> findByOriginalFilenameAndFinalPath(String originalFilename, String finalPath);
 
     Optional<FileRecord> findByOriginalFilenameAndFinalPathOrHash(String originalFilename, String finalPath, String fileHash);

@@ -48,6 +48,15 @@ public class FileProcessingServiceImpl implements FileProcessingService {
             return;
         }
 
+        // Family check: defer if a sibling revision is currently being processed.
+        // Prevents concurrent writes to the same measure records while UNIQUE constraints
+        // are not yet applied to legacy tables.
+        if (fileRecordService.isFamilyBeingProcessed(fileRecord)) {
+            log.info("Deferring file '{}': a sibling revision is currently being processed",
+                    fileRecord.getOriginalFilename());
+            return;
+        }
+
         String instanceId = instanceIdentifier.getInstanceId();
         FileRecord claimedRecord = ensureClaimedByCurrentInstance(fileRecord, instanceId);
         if (claimedRecord == null) {
@@ -63,6 +72,7 @@ public class FileProcessingServiceImpl implements FileProcessingService {
             claimedRecord.setFinalPath(processingPath.toAbsolutePath().toString());
             claimedRecord.markAsProcessing();
             saveOwnedOrThrow(claimedRecord, instanceId, startedAtNanos);
+            publishProcessingStartedOutboxEvent(claimedRecord);
 
             FileTypeProcessor processor = fileTypeProcessorRegistry.getRequiredProcessor(claimedRecord.getType());
             FileTypeProcessingResult result = processor.process(claimedRecord, processingPath);
@@ -270,12 +280,53 @@ public class FileProcessingServiceImpl implements FileProcessingService {
         }
     }
 
+    private void publishProcessingStartedOutboxEvent(FileRecord fileRecord) {
+        try {
+            outboxEventRepository.save(
+                    OutboxEventFactory.createPending(
+                            "FileRecord",
+                            String.valueOf(fileRecord.getId()),
+                            "FILE_PROCESSING_STARTED",
+                            buildProcessingStartedPayload(fileRecord)
+                    )
+            );
+        } catch (Exception ex) {
+            log.warn(
+                    "Could not publish processing-started outbox event for fileId={}: {}",
+                    fileRecord.getId(),
+                    ex.getMessage(),
+                    ex
+            );
+        }
+    }
+
+    private String buildProcessingStartedPayload(FileRecord fileRecord) {
+        String safeOrigin = safeName(fileRecord.getOrigin());
+        String safeType = safeName(fileRecord.getType());
+        String finalPath = fileRecord.getFinalPath() != null
+                ? "\"" + escapeJson(fileRecord.getFinalPath()) + "\""
+                : "null";
+
+        return "{"
+                + "\"fileRecordId\":" + fileRecord.getId() + ","
+                + "\"sourceId\":\"" + fileRecord.getId() + "\","
+                + "\"eventType\":\"FILE_PROCESSING_STARTED\","
+                + "\"status\":\"PROCESSING\","
+                + "\"filename\":\"" + escapeJson(fileRecord.getOriginalFilename()) + "\","
+                + "\"fileType\":\"" + safeType + "\","
+                + "\"origin\":\"" + safeOrigin + "\","
+                + "\"finalPath\":" + finalPath + ","
+                + "\"occurredAt\":\"" + java.time.LocalDateTime.now() + "\""
+                + "}";
+    }
+
     private void publishDeferredOutboxEvents(FileRecord fileRecord, FileTypeProcessingResult result) {
         for (FileTypeProcessingResult.DeferredOutboxEvent deferredEvent : result.deferredOutboxEvents()) {
             try {
                 String payload = switch (deferredEvent.eventType()) {
                     case FILE_DEFECT_REPORT_CREATED -> buildDefectReportCreatedPayload(fileRecord, deferredEvent);
                     case FILE_PERSISTENCE_QUARANTINE -> buildPersistenceQuarantinePayload(fileRecord, deferredEvent);
+                    case FILE_MEASURE_PROCESSED -> buildMeasureProcessedPayload(fileRecord, deferredEvent);
                     default -> throw new IllegalArgumentException("Unsupported deferred outbox event: " + deferredEvent.eventType());
                 };
 
@@ -360,6 +411,35 @@ public class FileProcessingServiceImpl implements FileProcessingService {
                 + "\"failedRecordCount\":" + deferredEvent.failedRecordCount() + ","
                 + "\"quarantineFilePath\":" + quarantinePath
                 + "}"
+                + "}";
+    }
+
+    private String buildMeasureProcessedPayload(
+            FileRecord fileRecord,
+            FileTypeProcessingResult.DeferredOutboxEvent deferredEvent
+    ) {
+        String safeOrigin = safeName(fileRecord.getOrigin());
+        String safeType = safeName(fileRecord.getType());
+        String safeStatus = safeName(fileRecord.getStatus());
+        String finalPath = fileRecord.getFinalPath() != null
+                ? "\"" + escapeJson(fileRecord.getFinalPath()) + "\""
+                : "null";
+        String metadataJson = deferredEvent.metadataJson() != null && !deferredEvent.metadataJson().isBlank()
+                ? deferredEvent.metadataJson()
+                : "{}";
+
+        return "{"
+                + "\"fileRecordId\":" + fileRecord.getId() + ","
+                + "\"sourceId\":\"" + fileRecord.getId() + "\","
+                + "\"eventType\":\"" + deferredEvent.eventType().name() + "\","
+                + "\"filename\":\"" + escapeJson(fileRecord.getOriginalFilename()) + "\","
+                + "\"fileType\":\"" + safeType + "\","
+                + "\"status\":\"" + safeStatus + "\","
+                + "\"origin\":\"" + safeOrigin + "\","
+                + "\"finalPath\":" + finalPath + ","
+                + "\"comment\":\"" + escapeJson(fileRecord.getComment()) + "\","
+                + "\"occurredAt\":\"" + java.time.LocalDateTime.now() + "\","
+                + "\"metadata\":" + metadataJson
                 + "}";
     }
 

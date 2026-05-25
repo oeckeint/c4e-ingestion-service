@@ -20,6 +20,19 @@ public class UploadBatchApiResponseMapper {
         return ResponseFilesFactory.badRequest(Messages.get(IngestionCommonMessageKey.UPLOAD_NO_FILES_PROVIDED));
     }
 
+    public ResponseEntity<ApiResponse<FileUploadBatchResponse>> toTooManyFilesResponse(int maxFilesPerRequest) {
+        return ResponseFilesFactory.badRequest(
+                Messages.format(IngestionCommonMessageKey.UPLOAD_TOO_MANY_FILES, maxFilesPerRequest)
+        );
+    }
+
+    public ResponseEntity<ApiResponse<FileUploadBatchResponse>> toTotalSizeExceededResponse(long maxTotalSizeBytes) {
+        long maxTotalSizeMb = maxTotalSizeBytes / (1024 * 1024);
+        return ResponseFilesFactory.badRequest(
+                Messages.format(IngestionCommonMessageKey.UPLOAD_TOTAL_SIZE_EXCEEDED, maxTotalSizeMb)
+        );
+    }
+
     public ResponseEntity<ApiResponse<FileUploadBatchResponse>> toAcceptedResponse(FileBatchResult result) {
         return ResponseFilesFactory.accepted(toBatchMessage(result), toBatchResponse(result));
     }

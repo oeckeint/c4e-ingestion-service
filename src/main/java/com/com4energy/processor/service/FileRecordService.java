@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.com4energy.processor.config.FeatureFlagService;
 import com.com4energy.processor.service.dto.FileHandlingResult;
+import org.apache.commons.io.FilenameUtils;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -156,6 +157,25 @@ public class FileRecordService {
     public List<FileRecord> findLockedFilesOlderThan(int minutesAgo) {
         LocalDateTime threshold = LocalDateTime.now().minus(minutesAgo, ChronoUnit.MINUTES);
         return repository.findByLockedTrueAndLockedAtBefore(threshold);
+    }
+
+    /**
+     * Returns true if any sibling file (same base name, different extension) is currently
+     * locked/being processed. Used to defer a revision when a related file is in-flight,
+     * preventing concurrent writes to the same measure records.
+     *
+     * Example: if "P2_12345.0" is being processed, "P2_12345.1" will be deferred.
+     */
+    public boolean isFamilyBeingProcessed(FileRecord fileRecord) {
+        if (fileRecord.getId() == null || fileRecord.getOriginalFilename() == null) {
+            return false;
+        }
+        String baseName = FilenameUtils.getBaseName(fileRecord.getOriginalFilename());
+        if (baseName == null || baseName.isBlank()) {
+            return false;
+        }
+        String familyPattern = baseName + ".%";
+        return repository.existsFamilyFileBeingProcessed(familyPattern, fileRecord.getId());
     }
 
 

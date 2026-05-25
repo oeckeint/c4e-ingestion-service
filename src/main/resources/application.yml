@@ -4,8 +4,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: ${C4E_UPLOAD_MAX_FILE_SIZE}
+      max-request-size: ${C4E_UPLOAD_MAX_REQUEST_SIZE}
   datasource:
     url: ${DB_URL_SGE}
     username: ${DB_USER_SGE}
@@ -51,19 +51,21 @@ c4e:
     rejected-path: ${c4e.upload.base-path}/rejected
     archive-path: ${c4e.upload.base-path}/archive
     automatic-path: ${c4e.upload.base-path}/automatic
-    max-size-bytes: 10485760
+    max-size-bytes: ${C4E_UPLOAD_MAX_SIZE_BYTES}
+    max-files-per-request: ${C4E_UPLOAD_MAX_FILES_PER_REQUEST}
+    max-total-size-bytes: ${C4E_UPLOAD_MAX_TOTAL_SIZE_BYTES}
     allowed-extensions:
       - xml
-      - 0
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
-      - 8
-      - 9
+      - '0'
+      - '1'
+      - '2'
+      - '3'
+      - '4'
+      - '5'
+      - '6'
+      - '7'
+      - '8'
+      - '9'
     allowed-content-types:
       - text/xml
       - application/xml

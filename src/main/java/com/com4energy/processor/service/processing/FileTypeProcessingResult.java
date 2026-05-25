@@ -66,7 +66,8 @@ public record FileTypeProcessingResult(
             String phase,
             Integer incidentCount,
             Integer failedRecordCount,
-            Path reportPath
+            Path reportPath,
+            String metadataJson
     ) {
         public static DeferredOutboxEvent defectReportCreated(String phase, int incidentCount, Path reportPath) {
             return new DeferredOutboxEvent(
@@ -74,7 +75,8 @@ public record FileTypeProcessingResult(
                     phase,
                     incidentCount,
                     null,
-                    reportPath
+                    reportPath,
+                    null
             );
         }
 
@@ -84,7 +86,19 @@ public record FileTypeProcessingResult(
                     null,
                     null,
                     failedRecordCount,
-                    reportPath
+                    reportPath,
+                    null
+            );
+        }
+
+        public static DeferredOutboxEvent measureProcessed(String metadataJson) {
+            return new DeferredOutboxEvent(
+                    OutboxEventType.FILE_MEASURE_PROCESSED,
+                    null,
+                    null,
+                    null,
+                    null,
+                    metadataJson
             );
         }
     }

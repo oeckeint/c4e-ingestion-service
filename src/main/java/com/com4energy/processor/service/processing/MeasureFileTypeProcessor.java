@@ -151,6 +151,21 @@ public class MeasureFileTypeProcessor implements FileTypeProcessor {
                     persistDurationMs
             ));
 
+            if (!hasDefects) {
+                String processedMetadataJson = "{"
+                        + "\"measureType\":\"" + measureType + "\","
+                        + "\"targetTable\":\"" + destinationStore + "\","
+                        + "\"total\":" + totalMeasuresInFile + ","
+                        + "\"persisted\":" + persistedMeasures + ","
+                        + "\"defects\":" + defectCount + ","
+                        + "\"skipped\":" + skippedMeasures + ","
+                        + "\"totalMs\":" + totalProcessingMs + ","
+                        + "\"parseMs\":" + parseDurationMs + ","
+                        + "\"persistMs\":" + persistDurationMs
+                        + "}";
+                deferredOutboxEvents.add(FileTypeProcessingResult.DeferredOutboxEvent.measureProcessed(processedMetadataJson));
+            }
+
             // Cuarentena: registros aislados por binary split — flujo EXCEPCIONAL
             // Se reportan por separado (.sge_quarantine.jsonl) y se publican al outbox
             if (persistenceResult.hasFailedRecords()) {
