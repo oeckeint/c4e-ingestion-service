@@ -93,7 +93,7 @@ public record FileTypeProcessingResult(
 
         public static DeferredOutboxEvent measureProcessed(String metadataJson) {
             return new DeferredOutboxEvent(
-                    OutboxEventType.FILE_MEASURE_PROCESSED,
+                    OutboxEventType.FILE_PROCESSING_PROCESSED,
                     null,
                     null,
                     null,

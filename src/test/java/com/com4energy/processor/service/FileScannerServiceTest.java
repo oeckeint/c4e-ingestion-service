@@ -6,12 +6,15 @@ import com.com4energy.processor.service.dto.FileBatchResult;
 import com.com4energy.processor.util.FileStorageUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -76,6 +79,35 @@ class FileScannerServiceTest {
         assertFalse(Files.exists(incomingFile));
         assertTrue(Files.exists(lockedFile));
         verify(fileStorageUtil, never()).deleteIfExists(any(Path.class));
+    }
+
+    @Test
+    void scanAndRegisterFilesProcessesFilesInAlphabeticalOrder() throws IOException {
+        Path automaticDir = Files.createDirectories(tempDir.resolve("automatic"));
+        Path lockDir = tempDir.resolve(".scanner-lock");
+        Files.writeString(automaticDir.resolve("F5D_0031_0894_20250311.1"), "same-content");
+        Files.writeString(automaticDir.resolve("F5D_0031_0894_20250311.0"), "same-content");
+
+        FileUploadOrchestratorService orchestratorService = mock(FileUploadOrchestratorService.class);
+        FileStorageUtil fileStorageUtil = mock(FileStorageUtil.class);
+        List<String> processedOrder = new ArrayList<>();
+
+        when(orchestratorService.processFiles(any(), eq(FileOrigin.JOB))).thenAnswer(invocation -> {
+            MultipartFile[] files = invocation.getArgument(0);
+            processedOrder.add(files[0].getOriginalFilename());
+            return FileBatchResult.empty();
+        });
+        when(fileStorageUtil.deleteIfExists(any(Path.class))).thenReturn(true);
+
+        FileScannerService service = new FileScannerService(
+                orchestratorService,
+                fileStorageUtil,
+                scannerProperties(automaticDir, lockDir)
+        );
+
+        service.scanAndRegisterFiles();
+
+        assertEquals(List.of("F5D_0031_0894_20250311.0", "F5D_0031_0894_20250311.1"), processedOrder);
     }
 
     private FileScannerProperties scannerProperties(Path automaticDir, Path lockDir) {

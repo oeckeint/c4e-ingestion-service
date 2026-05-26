@@ -3,6 +3,7 @@ package com.com4energy.processor.service;
 import com.com4energy.processor.common.IngestionCommonMessageKey;
 import com.com4energy.processor.common.InternalServices;
 import com.com4energy.processor.config.properties.FileUploadProperties;
+import com.com4energy.processor.exception.DuplicateHashPersistenceException;
 import com.com4energy.processor.model.FailureReason;
 import com.com4energy.processor.model.FileOrigin;
 import com.com4energy.processor.outbox.service.OutboxService;
@@ -22,8 +23,11 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @RequiredArgsConstructor
 @Service
@@ -42,14 +46,83 @@ public class FileUploadOrchestratorService {
     }
 
     public FileBatchResult processFiles(MultipartFile[] files, FileOrigin origin) {
-        FileBatchResult fileBatchResult = FileBatchResult.fromFileContexts(getFileContexts(files));
+        if (files == null || files.length == 0) {
+            return FileBatchResult.empty();
+        }
 
-        fileBatchResult.failedFiles().forEach(fileContext -> processRejectFile(fileContext, origin));
-        fileBatchResult.duplicatedFiles().forEach(fileContext -> processDuplicatedFile(fileContext, origin));
-        fileBatchResult.validFiles().forEach(fileContext -> processNewFile(fileContext, origin));
+        // Sort alphabetically so that, when two files have the same content,
+        // the one with the lexicographically smaller name (e.g. ".0" before ".1")
+        // is always registered first, making the duplicate-winner deterministic.
+        MultipartFile[] sortedFiles = Arrays.stream(files)
+                .sorted(Comparator.comparing(f -> {
+                    String name = f.getOriginalFilename();
+                    return name != null ? name : "";
+                }))
+                .toArray(MultipartFile[]::new);
 
-        return fileBatchResult;
+        List<FileContext> finalizedContexts = new ArrayList<>(sortedFiles.length);
+        Set<String> batchHashes = HashSet.newHashSet(Math.max(16, sortedFiles.length * 2));
+
+        for (MultipartFile file : sortedFiles) {
+            finalizedContexts.add(processSingleFile(file, origin, batchHashes));
+        }
+
+        return FileBatchResult.fromFileContexts(finalizedContexts);
     }
+
+    private FileContext processSingleFile(MultipartFile file, FileOrigin origin, Set<String> batchHashes) {
+        FileContext fileContext = runValidationsForSingleFile(file);
+        if (fileContext.isInvalid()) {
+            handleInvalidFileContext(fileContext, origin);
+            return fileContext;
+        }
+
+        return handleValidFileContext(fileContext, origin, batchHashes);
+    }
+
+    private void handleInvalidFileContext(FileContext fileContext, FileOrigin origin) {
+        if (fileContext.isDuplicated()) {
+            processDuplicatedFile(fileContext, origin);
+            return;
+        }
+
+        processRejectFile(fileContext, origin);
+    }
+
+    private FileContext handleValidFileContext(FileContext fileContext, FileOrigin origin, Set<String> batchHashes) {
+        String hash = fileContext.validationContext().getOrComputeHash();
+        if (!batchHashes.add(hash)) {
+            FileContext duplicatedContext = toDuplicatedContentContext(fileContext);
+            processDuplicatedFile(duplicatedContext, origin);
+            log.info("Duplicate hash detected within same batch. file={} hash={}", duplicatedContext.validationContext().getOriginalFilename(), hash);
+            return duplicatedContext;
+        }
+
+        return persistOrMapAsDuplicated(fileContext, origin);
+    }
+
+    private FileContext persistOrMapAsDuplicated(FileContext fileContext, FileOrigin origin) {
+        try {
+            processNewFile(fileContext, origin);
+            return fileContext;
+        } catch (DuplicateHashPersistenceException ex) {
+            FileContext duplicatedContext = toDuplicatedContentContext(fileContext);
+            processDuplicatedFile(duplicatedContext, origin);
+            log.info("Duplicate hash during persistence resolved as duplicated content. file={} hash={}",
+                    duplicatedContext.validationContext().getOriginalFilename(),
+                    duplicatedContext.validationContext().getOrComputeHash());
+            return duplicatedContext;
+        }
+    }
+
+    private FileContext toDuplicatedContentContext(FileContext fileContext) {
+        return FileContext.fromWithDuplicatedContentStatus(
+                fileContext.validationContext(),
+                List.of(FailureReason.DUPLICATED_CONTENT),
+                FailureReason.DUPLICATED_CONTENT
+        );
+    }
+
 
     public List<FileContext> getFileContexts(MultipartFile[] files) {
         return files == null ? List.of() :

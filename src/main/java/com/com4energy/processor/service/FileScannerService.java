@@ -8,6 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import com.com4energy.i18n.core.Messages;
 import com.com4energy.processor.common.LogsCommonMessageKey;
@@ -45,7 +48,17 @@ public class FileScannerService {
                 if (Files.exists(path) && Files.isDirectory(path)) {
                     long filesFound = 0;
                     try (DirectoryStream<Path> filesFromFolder = Files.newDirectoryStream(path)) {
+                        List<Path> orderedFiles = new ArrayList<>();
                         for (Path file : filesFromFolder) {
+                            if (Files.isRegularFile(file)) {
+                                orderedFiles.add(file);
+                            }
+                        }
+
+                        // Deterministic order avoids non-reproducible duplicate-content winner/loser decisions.
+                        orderedFiles.sort(Comparator.comparing(file -> file.getFileName().toString()));
+
+                        for (Path file : orderedFiles) {
                             if (processFileFromFolder(file, lockDirectory) == FileProcessResult.PROCESSED) {
                                 filesFound++;
                             }

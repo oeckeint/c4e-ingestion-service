@@ -10,15 +10,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import com.com4energy.processor.outbox.service.OutboxService;
 import com.com4energy.processor.config.InstanceIdentifier;
-import com.com4energy.processor.service.FileRecordService;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScannerLockMaintenanceServiceTest {
+
+    private static final DateTimeFormatter YEAR_MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
 
     @TempDir
     Path tempDir;
@@ -35,7 +38,11 @@ class ScannerLockMaintenanceServiceTest {
         service.cleanupExpiredLocks();
 
         assertFalse(Files.exists(staleFile));
-        assertTrue(Files.exists(tempDir.resolve("failed/stale.xml")));
+        Path expectedFailedPath = tempDir.resolve("failed")
+                .resolve("unknown")
+                .resolve(LocalDate.now().format(YEAR_MONTH_FORMATTER))
+                .resolve("stale.xml");
+        assertTrue(Files.exists(expectedFailedPath));
     }
 
     @Test
@@ -49,7 +56,11 @@ class ScannerLockMaintenanceServiceTest {
         service.cleanupExpiredLocks();
 
         assertTrue(Files.exists(recentFile));
-        assertFalse(Files.exists(tempDir.resolve("failed/recent.xml")));
+        Path expectedFailedPath = tempDir.resolve("failed")
+                .resolve("unknown")
+                .resolve(LocalDate.now().format(YEAR_MONTH_FORMATTER))
+                .resolve("recent.xml");
+        assertFalse(Files.exists(expectedFailedPath));
     }
 
     private ScannerLockMaintenanceService buildService(Path lockDir, long maxAgeMs) {

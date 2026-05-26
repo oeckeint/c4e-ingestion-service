@@ -46,10 +46,12 @@ FileRecordRepository extends JpaRepository<FileRecord, Long> {
             WHERE f.originalFilename LIKE :familyPattern
               AND f.id <> :excludeId
               AND f.locked = true
+              AND f.status = :processingStatus
             """)
     boolean existsFamilyFileBeingProcessed(
             @Param("familyPattern") String familyPattern,
-            @Param("excludeId") Long excludeId
+            @Param("excludeId") Long excludeId,
+            @Param("processingStatus") FileStatus processingStatus
     );
 
     Optional<FileRecord> findByOriginalFilenameAndFinalPath(String originalFilename, String finalPath);

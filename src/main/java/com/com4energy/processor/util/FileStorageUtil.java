@@ -5,6 +5,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Optional;
 
 import com.com4energy.processor.model.FileStatus;
@@ -26,6 +29,11 @@ public final class FileStorageUtil {
     private static final int MAX_FILENAME_LENGTH = 255;
     private static final String DEFAULT_FILENAME = "file";
     private static final String SAFE_FILENAME_REGEX = "[^A-Za-z0-9._-]";
+    private static final String TYPE_FOLDER_UNKNOWN = "unknown";
+    private static final String TYPE_FOLDER_MEDIDA_H = "medida_h";
+    private static final String TYPE_FOLDER_MEDIDA_QH = "medida_qh";
+    private static final String TYPE_FOLDER_MEDIDA_CCH = "medida_cch";
+    private static final DateTimeFormatter YEAR_MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
 
     private final FileUploadProperties fileUploadProperties;
 
@@ -34,15 +42,15 @@ public final class FileStorageUtil {
     }
 
     public Path moveFileToProcessing(File file) {
-        return moveFile(file, fileUploadProperties.processingPath() + "/" + defineSubFolder(file), "processing");
+        return moveFile(file, fileUploadProperties.processingPath(), "processing");
     }
 
     public Path moveFileFromProcessingToProcessed(File file) {
-        return moveFile(file, fileUploadProperties.processedPath() + "/" + defineSubFolder(file), "processed");
+        return moveFile(file, fileUploadProperties.processedPath(), "processed");
     }
 
     public Path moveFileToDuplicates(File file) {
-        return moveFile(file, fileUploadProperties.duplicatesPath() + "/" + defineSubFolder(file), "duplicates");
+        return moveFile(file, fileUploadProperties.duplicatesPath(), "duplicates");
     }
 
     public Path moveFileToPending(File file) {
@@ -55,6 +63,10 @@ public final class FileStorageUtil {
 
     public Path moveFileToRejected(File file) {
         return moveFile(file, fileUploadProperties.rejectedPath(), "rejected");
+    }
+
+    public Path moveFileToArchive(File file) {
+        return moveFile(file, fileUploadProperties.archivePath(), "archive");
     }
 
     /**
@@ -72,8 +84,9 @@ public final class FileStorageUtil {
 
         try {
             Path basePath = Paths.get(fileUploadProperties.failedPath()).toAbsolutePath().normalize();
-            Files.createDirectories(basePath);
-            Path target = basePath.resolve(safeFilename).normalize();
+            Path lifecyclePath = resolveLifecycleDirectory(basePath, safeFilename);
+            Files.createDirectories(lifecyclePath);
+            Path target = lifecyclePath.resolve(safeFilename).normalize();
             if (!target.startsWith(basePath)) {
                 throw new IOException("Invalid file path after sanitization: " + safeFilename);
             }
@@ -118,14 +131,15 @@ public final class FileStorageUtil {
         try {
             Path normalizedBasePath = basePath.toAbsolutePath().normalize();
             String safeFilename = sanitizeFilename(resolveFilename(file));
-            Path storagePath = normalizedBasePath.resolve(safeFilename).normalize();
+            Path lifecyclePath = resolveLifecycleDirectory(normalizedBasePath, safeFilename);
+            Path storagePath = lifecyclePath.resolve(safeFilename).normalize();
 
             if (!storagePath.startsWith(normalizedBasePath)) {
                 throw new IOException("Invalid file path after sanitization");
             }
 
             if (!overrideExisting && Files.exists(storagePath)) {
-                storagePath = resolveNonConflictingPath(normalizedBasePath, safeFilename);
+                storagePath = resolveNonConflictingPath(lifecyclePath, safeFilename);
             }
 
             Files.createDirectories(storagePath.getParent());
@@ -203,15 +217,16 @@ public final class FileStorageUtil {
 
     private Path moveFile(File file, String destinationDir, String label) {
         try {
-            //Debemos definir un subtipo de carpeta para los tipos de medida
             Path destinationRoot = Paths.get(destinationDir).toAbsolutePath().normalize();
-            Files.createDirectories(destinationRoot);
-            Path destinationPath = destinationRoot.resolve(sanitizeFilename(file.getName())).normalize();
+            String safeFilename = sanitizeFilename(file.getName());
+            Path lifecyclePath = resolveLifecycleDirectory(destinationRoot, safeFilename);
+            Files.createDirectories(lifecyclePath);
+            Path destinationPath = lifecyclePath.resolve(safeFilename).normalize();
             if (!destinationPath.startsWith(destinationRoot)) {
                 throw new IOException("Invalid destination path after sanitization: " + file.getName());
             }
             if (Files.exists(destinationPath)) {
-                destinationPath = resolveNonConflictingPath(destinationRoot, destinationPath.getFileName().toString());
+                destinationPath = resolveNonConflictingPath(lifecyclePath, destinationPath.getFileName().toString());
             }
             log.debug("Moving file to {}: {}", label, destinationPath.toAbsolutePath());
             return Files.move(file.toPath(), destinationPath);
@@ -221,12 +236,33 @@ public final class FileStorageUtil {
         }
     }
 
-    private String defineSubFolder(File file) {
-        String extension = FilenameUtils.getExtension(file.getName()).toLowerCase();
-        return switch (extension) {
-            case "pdf" -> "pdf/";
-            case "xml" -> "xml/";
-            default -> "others/";
+    private Path resolveLifecycleDirectory(Path basePath, String filename) {
+        String typeFolder = resolveTypeFolderFromFilename(filename);
+        String yearMonthFolder = LocalDate.now().format(YEAR_MONTH_FORMATTER);
+        return basePath.resolve(typeFolder).resolve(yearMonthFolder).normalize();
+    }
+
+    private String resolveTypeFolderFromFilename(String filename) {
+        String extension = Optional.ofNullable(FilenameUtils.getExtension(filename))
+                .map(ext -> ext.toLowerCase(Locale.ROOT))
+                .orElse("");
+
+        if (extension.length() != 1 || !Character.isDigit(extension.charAt(0))) {
+            return TYPE_FOLDER_UNKNOWN;
+        }
+
+        String baseName = FilenameUtils.getBaseName(filename);
+        String[] tokens = baseName.split("_");
+        if (tokens.length == 0 || tokens[0].length() < 2) {
+            return TYPE_FOLDER_UNKNOWN;
+        }
+
+        String prefix = tokens[0].substring(0, 2).toLowerCase(Locale.ROOT);
+        return switch (prefix) {
+            case "p1" -> TYPE_FOLDER_MEDIDA_H;
+            case "p2" -> TYPE_FOLDER_MEDIDA_QH;
+            case "f5" -> TYPE_FOLDER_MEDIDA_CCH;
+            default -> TYPE_FOLDER_UNKNOWN;
         };
     }
 

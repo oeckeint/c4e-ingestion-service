@@ -26,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -309,6 +310,41 @@ class FileProcessingServiceImplTest {
                         OutboxEventType.FILE_DEFECT_REPORT_CREATED.name().equals(event.getEventType())
                                 && event.getPayload().contains("\"status\":\"SUCCEEDED\"")
                                 && event.getPayload().contains("\"phase\":\"validation\"")
+                )
+        );
+    }
+
+    @Test
+    void processFilePublishesProcessingStartedWithInitialPendingRegistrationTimestamp() throws IOException {
+        Path pendingFile = createPendingFile("content");
+
+        FileRecordService fileRecordService = mock(FileRecordService.class);
+        IncidentNotificationService incidentNotificationService = mock(IncidentNotificationService.class);
+        InstanceIdentifier instanceIdentifier = mock(InstanceIdentifier.class);
+        OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
+        when(instanceIdentifier.getInstanceId()).thenReturn("instance-a");
+        when(fileRecordService.saveIfOwnedBy(org.mockito.ArgumentMatchers.any(FileRecord.class), org.mockito.ArgumentMatchers.eq("instance-a")))
+                .thenReturn(true);
+        when(fileRecordService.releaseLockIfOwnedBy(org.mockito.ArgumentMatchers.any(FileRecord.class), org.mockito.ArgumentMatchers.eq("instance-a")))
+                .thenReturn(true);
+
+        FileProcessingServiceImpl service = newService(
+                fileRecordService,
+                incidentNotificationService,
+                instanceIdentifier,
+                new FileTypeProcessorRegistry(List.of(measureProcessorWithStubPersistence())),
+                outboxEventRepository
+        );
+
+        FileRecord fileRecord = claimedMeasureRecord(pendingFile);
+        fileRecord.setUploadedAt(LocalDateTime.of(2026, 5, 25, 10, 11, 12));
+
+        service.processFile(fileRecord);
+
+        verify(outboxEventRepository).save(
+                org.mockito.ArgumentMatchers.argThat(event ->
+                        OutboxEventType.FILE_PROCESSING_STARTED.name().equals(event.getEventType())
+                                && event.getPayload().contains("\"occurredAt\":\"2026-05-25T10:11:12\"")
                 )
         );
     }

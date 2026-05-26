@@ -48,15 +48,6 @@ public class FileProcessingServiceImpl implements FileProcessingService {
             return;
         }
 
-        // Family check: defer if a sibling revision is currently being processed.
-        // Prevents concurrent writes to the same measure records while UNIQUE constraints
-        // are not yet applied to legacy tables.
-        if (fileRecordService.isFamilyBeingProcessed(fileRecord)) {
-            log.info("Deferring file '{}': a sibling revision is currently being processed",
-                    fileRecord.getOriginalFilename());
-            return;
-        }
-
         String instanceId = instanceIdentifier.getInstanceId();
         FileRecord claimedRecord = ensureClaimedByCurrentInstance(fileRecord, instanceId);
         if (claimedRecord == null) {
@@ -68,6 +59,14 @@ public class FileProcessingServiceImpl implements FileProcessingService {
         Path processingPath = null;
 
         try {
+            // Family check: defer if a sibling revision is currently being processed.
+            // It must run after claim, so this method always reaches finally{} and releases lock.
+            if (fileRecordService.isFamilyBeingProcessed(claimedRecord)) {
+                log.info("Deferring file '{}': a sibling revision is currently being processed",
+                        claimedRecord.getOriginalFilename());
+                return;
+            }
+
             processingPath = moveToProcessing(claimedRecord);
             claimedRecord.setFinalPath(processingPath.toAbsolutePath().toString());
             claimedRecord.markAsProcessing();
@@ -303,6 +302,9 @@ public class FileProcessingServiceImpl implements FileProcessingService {
     private String buildProcessingStartedPayload(FileRecord fileRecord) {
         String safeOrigin = safeName(fileRecord.getOrigin());
         String safeType = safeName(fileRecord.getType());
+        java.time.LocalDateTime initialRegistrationAt = fileRecord.getUploadedAt() != null
+                ? fileRecord.getUploadedAt()
+                : java.time.LocalDateTime.now();
         String finalPath = fileRecord.getFinalPath() != null
                 ? "\"" + escapeJson(fileRecord.getFinalPath()) + "\""
                 : "null";
@@ -316,7 +318,7 @@ public class FileProcessingServiceImpl implements FileProcessingService {
                 + "\"fileType\":\"" + safeType + "\","
                 + "\"origin\":\"" + safeOrigin + "\","
                 + "\"finalPath\":" + finalPath + ","
-                + "\"occurredAt\":\"" + java.time.LocalDateTime.now() + "\""
+                + "\"occurredAt\":\"" + initialRegistrationAt + "\""
                 + "}";
     }
 
@@ -326,7 +328,7 @@ public class FileProcessingServiceImpl implements FileProcessingService {
                 String payload = switch (deferredEvent.eventType()) {
                     case FILE_DEFECT_REPORT_CREATED -> buildDefectReportCreatedPayload(fileRecord, deferredEvent);
                     case FILE_PERSISTENCE_QUARANTINE -> buildPersistenceQuarantinePayload(fileRecord, deferredEvent);
-                    case FILE_MEASURE_PROCESSED -> buildMeasureProcessedPayload(fileRecord, deferredEvent);
+                    case FILE_PROCESSING_PROCESSED -> buildMeasureProcessedPayload(fileRecord, deferredEvent);
                     default -> throw new IllegalArgumentException("Unsupported deferred outbox event: " + deferredEvent.eventType());
                 };
 

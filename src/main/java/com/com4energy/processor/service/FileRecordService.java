@@ -4,11 +4,21 @@ import java.util.List;
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.Set;
+import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
 
 import com.com4energy.processor.config.FeatureFlagService;
+import com.com4energy.processor.exception.DuplicateHashPersistenceException;
 import com.com4energy.processor.service.dto.FileHandlingResult;
+import com.com4energy.processor.outbox.domain.OutboxAggregateType;
+import com.com4energy.processor.outbox.domain.OutboxEventType;
+import com.com4energy.processor.outbox.factory.OutboxEventFactory;
+import com.com4energy.processor.outbox.repository.OutboxEventRepository;
+import org.hibernate.exception.ConstraintViolationException;
 import org.apache.commons.io.FilenameUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,11 +35,15 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class FileRecordService {
 
+    private static final String HASH_UNIQUE_CONSTRAINT_NAME = "idx_hash";
+    private static final int MYSQL_DUPLICATE_ENTRY_ERROR_CODE = 1062;
+
     private final FeatureFlagService feature;
     private final FileRecordRepository repository;
     private final FileTypeProcessorRegistry fileTypeProcessorRegistry;
     private final FileProcessingJobProperties fileProcessingJobProperties;
     private final InstanceIdentifier instanceIdentifier;
+    private final OutboxEventRepository outboxEventRepository;
 
     @Transactional
     public FileHandlingResult saveNew(FileHandlingResult currentResult) {
@@ -57,6 +71,7 @@ public class FileRecordService {
     }
 
     protected FileRecord save(FileRecord requestedFileRecord, FileStatus desiredFileStatus) {
+        FileStatus originalStatus = requestedFileRecord.getStatus();
         switch (desiredFileStatus) {
             case FAILED -> requestedFileRecord.markAsFailed();
             case NEW -> requestedFileRecord.markAsNew();
@@ -68,11 +83,78 @@ public class FileRecordService {
         }
 
         if (feature.isPersistenceEnabled()) {
-            requestedFileRecord = repository.save(requestedFileRecord);
+            try {
+                requestedFileRecord = repository.save(requestedFileRecord);
+            } catch (DataIntegrityViolationException ex) {
+                if (!isDuplicateHashViolation(ex)) {
+                    throw ex;
+                }
+
+                throw new DuplicateHashPersistenceException(requestedFileRecord.getHash(), ex);
+            }
         }
 
+        publishRegisteredOutboxEventIfNeeded(requestedFileRecord, desiredFileStatus, originalStatus);
         log.info("FileRecord saved: {}", requestedFileRecord);
         return requestedFileRecord;
+    }
+
+    private void publishRegisteredOutboxEventIfNeeded(FileRecord fileRecord, FileStatus desiredFileStatus, FileStatus originalStatus) {
+        if (desiredFileStatus != FileStatus.PENDING) {
+            return;
+        }
+        // Solo alta inicial: evita publicar en transiciones posteriores a PENDING (ej. retries).
+        if (originalStatus != null || fileRecord.getId() == null) {
+            return;
+        }
+
+        try {
+            outboxEventRepository.save(
+                    OutboxEventFactory.createPending(
+                            OutboxAggregateType.FILE.name(),
+                            String.valueOf(fileRecord.getId()),
+                            OutboxEventType.FILE_REGISTERED.name(),
+                            buildFileRegisteredPayload(fileRecord)
+                    )
+            );
+        } catch (Exception ex) {
+            log.warn("Could not publish file-registered outbox event for fileId={}: {}", fileRecord.getId(), ex.getMessage(), ex);
+        }
+    }
+
+    private String buildFileRegisteredPayload(FileRecord fileRecord) {
+        LocalDateTime registeredAt = fileRecord.getUploadedAt() != null ? fileRecord.getUploadedAt() : LocalDateTime.now();
+        return "{"
+                + "\"fileRecordId\":" + fileRecord.getId() + ","
+                + "\"sourceId\":\"" + fileRecord.getId() + "\","
+                + "\"eventType\":\"" + OutboxEventType.FILE_REGISTERED.name() + "\","
+                + "\"status\":\"" + FileStatus.PENDING.name() + "\","
+                + "\"filename\":\"" + escapeJson(fileRecord.getOriginalFilename()) + "\","
+                + "\"extension\":\"" + escapeJson(fileRecord.getExtension()) + "\","
+                + "\"fileType\":\"" + safeEnumName(fileRecord.getType()) + "\","
+                + "\"origin\":\"" + safeEnumName(fileRecord.getOrigin()) + "\","
+                + "\"finalPath\":" + nullableJsonValue(fileRecord.getFinalPath()) + ","
+                + "\"occurredAt\":\"" + registeredAt + "\""
+                + "}";
+    }
+
+    private String safeEnumName(Enum<?> value) {
+        return value != null ? value.name() : "UNKNOWN";
+    }
+
+    private String nullableJsonValue(String value) {
+        return value == null ? "null" : "\"" + escapeJson(value) + "\"";
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     public Optional<FileRecord> findById(Long id) {
@@ -175,7 +257,7 @@ public class FileRecordService {
             return false;
         }
         String familyPattern = baseName + ".%";
-        return repository.existsFamilyFileBeingProcessed(familyPattern, fileRecord.getId());
+        return repository.existsFamilyFileBeingProcessed(familyPattern, fileRecord.getId(), FileStatus.PROCESSING);
     }
 
 
@@ -226,6 +308,61 @@ public class FileRecordService {
         fileRecord.setLocked(true);
         fileRecord.setLockedBy(instanceId);
         fileRecord.setLockedAt(LocalDateTime.now());
+    }
+
+    private boolean isDuplicateHashViolation(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (isHashConstraintViolation(current)
+                    || isMySqlDuplicateEntry(current)
+                    || containsHashConstraintToken(current)) {
+                return true;
+            }
+
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean isHashConstraintViolation(Throwable throwable) {
+        if (!(throwable instanceof ConstraintViolationException constraintViolationException)) {
+            return false;
+        }
+
+        return matchesHashConstraint(constraintViolationException.getConstraintName());
+    }
+
+    private boolean isMySqlDuplicateEntry(Throwable throwable) {
+        if (throwable instanceof SQLIntegrityConstraintViolationException sqlIntegrityConstraintViolationException) {
+            return sqlIntegrityConstraintViolationException.getErrorCode() == MYSQL_DUPLICATE_ENTRY_ERROR_CODE;
+        }
+
+        if (throwable instanceof SQLException sqlException) {
+            return sqlException.getErrorCode() == MYSQL_DUPLICATE_ENTRY_ERROR_CODE;
+        }
+
+        return false;
+    }
+
+    private boolean containsHashConstraintToken(Throwable throwable) {
+        String message = throwable.getMessage();
+        if (message == null) {
+            return false;
+        }
+
+        String normalized = message.toLowerCase(Locale.ROOT);
+        return normalized.contains(HASH_UNIQUE_CONSTRAINT_NAME)
+                || normalized.contains("file_records." + HASH_UNIQUE_CONSTRAINT_NAME);
+    }
+
+    private boolean matchesHashConstraint(String constraintName) {
+        if (constraintName == null || constraintName.isBlank()) {
+            return false;
+        }
+
+        String normalized = constraintName.toLowerCase(Locale.ROOT);
+        return HASH_UNIQUE_CONSTRAINT_NAME.equalsIgnoreCase(constraintName)
+                || normalized.endsWith("." + HASH_UNIQUE_CONSTRAINT_NAME);
     }
 
     private void copyMutableFields(FileRecord source, FileRecord target) {

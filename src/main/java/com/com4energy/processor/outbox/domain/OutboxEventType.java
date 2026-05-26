@@ -2,12 +2,13 @@ package com.com4energy.processor.outbox.domain;
 
 public enum OutboxEventType {
 
+    FILE_REGISTERED,
     FILE_REJECTED,
     FILE_ALREADY_EXISTS,
     FILE_UPLOADED,
     FILE_FAILED,
     FILE_PROCESSING_STARTED,
-    FILE_MEASURE_PROCESSED,
+    FILE_PROCESSING_PROCESSED,
 
     /** Errores de parseo (formato de línea inválido). Genera .sge_defect.jsonl */
     FILE_PARSE_INCIDENT,
